@@ -243,12 +243,72 @@ erDiagram
 
 ---
 
-## 6. Relatórios e Indicadores de Negócio (10 pontos)
+## 6. Relatórios e Indicadores de Negócio na Aplicação (10 pontos)
 
-As 5 consultas a seguir representam fluxos reais de telas e relatórios do sistema GastroHub, demonstrando que a modelagem suporta as necessidades operacionais:
+As consultas do Checkpoint 1 não vivem isoladas: elas alimentam diretamente os **Controllers e Endpoints da API REST** em Node.js/TypeScript (`app/src/controllers/`) e podem ser testadas no playground `consultas_checkpoint1.mongodb.js`:
 
-1. **Relatório 1 (Vitrine da Home):** Listar restaurantes ativos da culinária "Japonesa" com nota média $\ge 4.5$, ordenados pela melhor avaliação.
-2. **Relatório 2 (Cardápio Seguro):** Listar itens de cardápio com preço até R$ 50,00 que não contenham "glúten" na lista de alérgenos.
-3. **Relatório 3 (Tela da Cozinha / KDS):** Consultar todos os pedidos com status `"pendente"` ou `"preparando"` de um restaurante específico, ordenados do mais antigo para o mais recente.
-4. **Relatório 4 (Histórico do Usuário):** Listar os últimos 5 pedidos de um cliente, projetando apenas a data, o total e o status (sem trazer os dados desnecessários).
-5. **Relatório 5 (Manutenção de Catálogo):** Atualizar o preço de um prato com `$set` e adicionar a tag promocional `"destaque-semana"` usando `$addToSet`.
+| # | Relatório / Caso de Uso | Endpoint na API | Controller Responsável | Operadores & Padrão MongoDB |
+| :-: | :--- | :--- | :--- | :--- |
+| **1** | **Vitrine da Home (Top Avaliados)** | `GET /api/restaurantes/top` | `RestaurantesController.listarTop` | Filtro com `$gte: 4.0`, projeção de campos e `.sort({ avaliacao_media: -1 })`. |
+| **2** | **Cardápio Seguro (Alérgenos/Preço)** | `GET /api/cardapio/seguro` | `CardapioController.listarSeguro` | Filtro numérico com `$lte` e exclusão de alérgenos com `$nin`. |
+| **3** | **Tela da Cozinha (KDS)** | `GET /api/pedidos/cozinha` | `PedidosController.filaCozinha` | Filtro de múltiplos status com `$in` e ordenação cronológica `.sort({ data: 1 })`. |
+| **4** | **Histórico de Pedidos do Cliente** | `GET /api/pedidos/cliente/:email` | `PedidosController.historicoCliente` | Busca relacional por `cliente_id`, projeção enxuta e `.limit(5)`. |
+| **5** | **Manutenção Segura de Cardápio** | `PATCH /api/cardapio/:nome` | `CardapioController.atualizarItem` | Atualização atômica usando `$set` (preço) e `$addToSet` (novo ingrediente). |
+
+---
+
+### Detalhamento das Consultas nos Controllers
+
+#### 1. Vitrine da Home (`GET /api/restaurantes/top`)
+* **Arquivo:** `app/src/controllers/restaurantes.controller.ts`
+* **Implementação no Controller:**
+```typescript
+const restaurantes = await col.find(
+  { ativo: true, avaliacao_media: { $gte: 4.0 } },
+  { projection: { nome: 1, avaliacao_media: 1, categorias: 1, "endereco.cidade": 1, _id: 0 } }
+).sort({ avaliacao_media: -1 }).limit(5).toArray();
+```
+
+#### 2. Cardápio Seguro (`GET /api/cardapio/seguro?maxPreco=50&semAlergeno=glúten`)
+* **Arquivo:** `app/src/controllers/cardapio.controller.ts`
+* **Implementação no Controller:**
+```typescript
+const pratos = await col.find(
+  { preco: { $lte: maxPreco }, disponivel: true, alergenos: { $nin: [semAlergeno] } },
+  { projection: { nome: 1, preco: 1, categoria: 1, alergenos: 1 } }
+).sort({ preco: 1 }).toArray();
+```
+
+#### 3. Fila da Cozinha / KDS (`GET /api/pedidos/cozinha`)
+* **Arquivo:** `app/src/controllers/pedidos.controller.ts`
+* **Implementação no Controller:**
+```typescript
+const pedidos = await col.find(
+  { status: { $in: ["pendente", "preparando"] } },
+  { projection: { _id: 1, status: 1, data: 1, itens: 1, "entrega.previsao": 1 } }
+).sort({ data: 1 }).toArray();
+```
+
+#### 4. Histórico do Cliente (`GET /api/pedidos/cliente/:email`)
+* **Arquivo:** `app/src/controllers/pedidos.controller.ts`
+* **Implementação no Controller:**
+```typescript
+const pedidos = await col.find(
+  { cliente_id: cliente._id },
+  { projection: { data: 1, valor_total: 1, status: 1, itens: 1, "entrega.endereco": 1 } }
+).sort({ data: -1 }).limit(5).toArray();
+```
+
+#### 5. Atualização Segura de Item (`PATCH /api/cardapio/:nome`)
+* **Arquivo:** `app/src/controllers/cardapio.controller.ts`
+* **Implementação no Controller:**
+```typescript
+await col.updateOne(
+  { nome },
+  {
+    $set: { preco: parseFloat(preco) },
+    $addToSet: { ingredientes: novoIngrediente }
+  }
+);
+```
+
