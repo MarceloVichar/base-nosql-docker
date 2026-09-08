@@ -245,7 +245,7 @@ erDiagram
 
 ## 6. Relatórios e Indicadores de Negócio na Aplicação (10 pontos)
 
-As consultas do Checkpoint 1 não vivem isoladas: elas alimentam diretamente os **Controllers e Endpoints da API REST** em Node.js/TypeScript (`app/src/controllers/`) e podem ser testadas no playground `consultas_checkpoint1.mongodb.js`:
+As consultas do Checkpoint 1 não vivem em arquivos soltos: elas alimentam diretamente os **Controllers e Endpoints da API REST** em Node.js/TypeScript (`app/src/controllers/`), conectando nativamente ao MongoDB através do driver oficial. A validação prática da entrega é realizada pelo professor diretamente no ecossistema Docker, avaliando o script de inicialização (`init/mongo-init.js`) e as requisições aos endpoints da API:
 
 | # | Relatório / Caso de Uso | Endpoint na API | Controller Responsável | Operadores & Padrão MongoDB |
 | :-: | :--- | :--- | :--- | :--- |
