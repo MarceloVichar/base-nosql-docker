@@ -3,10 +3,13 @@ import { RestaurantesController } from "../controllers/restaurantes.controller.j
 
 const router = Router();
 
-// Rota de busca no Elasticsearch (colocada antes de /:id para não colidir com o parâmetro de rota)
+// 1. Rota de busca no Elasticsearch
 router.get("/busca", RestaurantesController.buscarPratos);
 
-// Rotas CRUD e Cache
+// 2. Rota de Top Restaurantes (Consulta Checkpoint 1 - antes de /:id para não colidir!)
+router.get("/top", RestaurantesController.listarTop);
+
+// 3. Rotas CRUD e Cache
 router.get("/", RestaurantesController.listar);
 router.get("/:id", RestaurantesController.obterPorId);
 router.post("/", RestaurantesController.criar);

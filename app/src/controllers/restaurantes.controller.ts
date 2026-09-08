@@ -157,4 +157,42 @@ export class RestaurantesController {
       res.status(500).json({ erro: "Erro ao criar restaurante", detalhe: err.message });
     }
   }
+
+  /**
+   * 5. TOP RESTAURANTES (Consulta Checkpoint 1)
+   * GET /api/restaurantes/top
+   * Retorna os restaurantes com maior nota média com projeção de cidade
+   */
+  static async listarTop(req: Request, res: Response): Promise<void> {
+    try {
+      const col = getCollection("restaurantes");
+      const restaurantes = await col
+        .find(
+          {
+            ativo: true,
+            avaliacao_media: { $gte: 4.0 },
+          },
+          {
+            projection: {
+              nome: 1,
+              avaliacao_media: 1,
+              categorias: 1,
+              "endereco.cidade": 1,
+              _id: 0,
+            },
+          }
+        )
+        .sort({ avaliacao_media: -1 })
+        .limit(5)
+        .toArray();
+
+      res.json({
+        origem: "MONGODB (Top Restaurantes Checkpoint 1)",
+        total: restaurantes.length,
+        dados: restaurantes,
+      });
+    } catch (err: any) {
+      res.status(500).json({ erro: "Erro ao buscar top restaurantes", detalhe: err.message });
+    }
+  }
 }

@@ -1,5 +1,8 @@
 import { Router, Request, Response } from "express";
 import itensRoutes from "./itens.routes.js";
+import restaurantesRoutes from "./restaurantes.routes.js";
+import cardapioRoutes from "./cardapio.routes.js";
+import pedidosRoutes from "./pedidos.routes.js";
 import { getDb } from "../database/mongo.js";
 import { getRedisClient } from "../database/redis.js";
 import { getElasticClient } from "../database/elastic.js";
@@ -48,7 +51,12 @@ routes.get("/health", async (req: Request, res: Response) => {
   res.status(httpStatus).json(status);
 });
 
-// Rota da coleção simples (GET /api/itens)
+// Rotas da Coleção Simples
 routes.use("/itens", itensRoutes);
+
+// Rotas do GastroHub — Checkpoint 1
+routes.use("/restaurantes", restaurantesRoutes);
+routes.use("/cardapio", cardapioRoutes);
+routes.use("/pedidos", pedidosRoutes);
 
 export default routes;
