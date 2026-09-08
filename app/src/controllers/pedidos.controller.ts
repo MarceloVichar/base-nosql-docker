@@ -1,90 +1,74 @@
 import { Request, Response } from "express";
+import { ObjectId } from "mongodb";
 import { getCollection } from "../database/mongo.js";
 
 export class PedidosController {
   /**
-   * 1. FILA DA COZINHA / KDS (Consulta Checkpoint 1)
+   * 1. LISTAR TODOS OS PEDIDOS
+   * GET /api/pedidos
+   */
+  static async listar(req: Request, res: Response): Promise<void> {
+    try {
+      const col = getCollection("pedidos");
+      const pedidos = await col.find().toArray();
+      res.json(pedidos);
+    } catch (err: any) {
+      res.status(500).json({ erro: err.message });
+    }
+  }
+
+  /**
+   * 2. FILA DA COZINHA (Consulta Checkpoint 1)
    * GET /api/pedidos/cozinha
-   * Busca pedidos em 'pendente' ou 'preparando', ordenados do mais antigo para o mais recente
+   * Filtro com $in para pedidos 'pendente' ou 'preparando', ordenados por data
    */
   static async filaCozinha(req: Request, res: Response): Promise<void> {
     try {
       const col = getCollection("pedidos");
       const pedidos = await col
-        .find(
-          {
-            status: { $in: ["pendente", "preparando"] },
-          },
-          {
-            projection: {
-              _id: 1,
-              status: 1,
-              data: 1,
-              itens: 1,
-              valor_total: 1,
-              "entrega.previsao": 1,
-            },
-          }
-        )
+        .find({
+          status: { $in: ["pendente", "preparando"] },
+        })
         .sort({ data: 1 })
         .toArray();
 
-      res.json({
-        origem: "MONGODB (Fila da Cozinha - KDS)",
-        total_na_fila: pedidos.length,
-        pedidos,
-      });
+      res.json(pedidos);
     } catch (err: any) {
-      res.status(500).json({ erro: "Erro ao buscar fila da cozinha", detalhe: err.message });
+      res.status(500).json({ erro: err.message });
     }
   }
 
   /**
-   * 2. HISTÓRICO DE PEDIDOS DO CLIENTE (Consulta Checkpoint 1)
-   * GET /api/pedidos/cliente/:email
-   * Busca os últimos 5 pedidos de um cliente com projeção enxuta
+   * 3. ATUALIZAR STATUS DO PEDIDO (Operação Checkpoint 1)
+   * PATCH /api/pedidos/:id/status
+   * Atualização de status com $set
    */
-  static async historicoCliente(req: Request, res: Response): Promise<void> {
+  static async atualizarStatus(req: Request, res: Response): Promise<void> {
     try {
-      const { email } = req.params;
+      const { id } = req.params;
+      const { status } = req.body;
 
-      const colClientes = getCollection("clientes");
-      const cliente = await colClientes.findOne({ email });
-
-      if (!cliente) {
-        res.status(404).json({ erro: `Cliente com e-mail '${email}' não encontrado.` });
+      if (!status) {
+        res.status(400).json({ erro: "Campo 'status' é obrigatório no corpo da requisição." });
         return;
       }
 
-      const colPedidos = getCollection("pedidos");
-      const pedidos = await colPedidos
-        .find(
-          { cliente_id: cliente._id },
-          {
-            projection: {
-              data: 1,
-              valor_total: 1,
-              status: 1,
-              itens: 1,
-              "entrega.endereco": 1,
-            },
-          }
-        )
-        .sort({ data: -1 })
-        .limit(5)
-        .toArray();
+      const col = getCollection("pedidos");
+      const resultado = await col.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status } }
+      );
+
+      if (resultado.matchedCount === 0) {
+        res.status(404).json({ erro: "Pedido não encontrado." });
+        return;
+      }
 
       res.json({
-        origem: "MONGODB (Histórico do Cliente)",
-        cliente: {
-          nome: cliente.nome,
-          email: cliente.email,
-        },
-        total_retornado: pedidos.length,
-        pedidos,
+        mensagem: `Status do pedido atualizado para '${status}' com sucesso!`,
       });
     } catch (err: any) {
-      res.status(500).json({ erro: "Erro ao buscar histórico do cliente", detalhe: err.message });
+      res.status(500).json({ erro: err.message });
     }
   }
 }

@@ -3,10 +3,13 @@ import { CardapioController } from "../controllers/cardapio.controller.js";
 
 const router = Router();
 
-// Rota de Cardápio Seguro (Consulta Checkpoint 1): GET /api/cardapio/seguro
-router.get("/seguro", CardapioController.listarSeguro);
+// 1. Pratos econômicos (Consulta Checkpoint 1)
+router.get("/economicos", CardapioController.listarEconomicos);
 
-// Rota de Atualização Atômica (Consulta Checkpoint 1): PATCH /api/cardapio/:nome
-router.patch("/:nome", CardapioController.atualizarItem);
+// 2. Listar todos os pratos
+router.get("/", CardapioController.listar);
+
+// 3. Atualizar preço com $set (Operação Checkpoint 1)
+router.patch("/:nome/preco", CardapioController.atualizarPreco);
 
 export default router;

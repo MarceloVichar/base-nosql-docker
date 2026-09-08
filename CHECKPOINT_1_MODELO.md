@@ -249,11 +249,11 @@ As consultas do Checkpoint 1 não vivem em arquivos soltos: elas alimentam diret
 
 | # | Relatório / Caso de Uso | Endpoint na API | Controller Responsável | Operadores & Padrão MongoDB |
 | :-: | :--- | :--- | :--- | :--- |
-| **1** | **Vitrine da Home (Top Avaliados)** | `GET /api/restaurantes/top` | `RestaurantesController.listarTop` | Filtro com `$gte: 4.0`, projeção de campos e `.sort({ avaliacao_media: -1 })`. |
-| **2** | **Cardápio Seguro (Alérgenos/Preço)** | `GET /api/cardapio/seguro` | `CardapioController.listarSeguro` | Filtro numérico com `$lte` e exclusão de alérgenos com `$nin`. |
-| **3** | **Tela da Cozinha (KDS)** | `GET /api/pedidos/cozinha` | `PedidosController.filaCozinha` | Filtro de múltiplos status com `$in` e ordenação cronológica `.sort({ data: 1 })`. |
-| **4** | **Histórico de Pedidos do Cliente** | `GET /api/pedidos/cliente/:email` | `PedidosController.historicoCliente` | Busca relacional por `cliente_id`, projeção enxuta e `.limit(5)`. |
-| **5** | **Manutenção Segura de Cardápio** | `PATCH /api/cardapio/:nome` | `CardapioController.atualizarItem` | Atualização atômica usando `$set` (preço) e `$addToSet` (novo ingrediente). |
+| **1** | **Vitrine da Home (Top Avaliados)** | `GET /api/restaurantes/top` | `RestaurantesController.listarTop` | Filtro com `$gte: 4.0`, ordenação `.sort({ avaliacao_media: -1 })` e `.limit(5)`. |
+| **2** | **Pratos Econômicos no Cardápio** | `GET /api/cardapio/economicos` | `CardapioController.listarEconomicos` | Filtro com `$lte: 40.0`, `{ disponivel: true }` e ordenação por preço crescente. |
+| **3** | **Tela da Cozinha (KDS)** | `GET /api/pedidos/cozinha` | `PedidosController.filaCozinha` | Filtro de múltiplos status com `$in: ["pendente", "preparando"]` e ordenação cronológica. |
+| **4** | **Atualização de Preço no Cardápio** | `PATCH /api/cardapio/:nome/preco` | `CardapioController.atualizarPreco` | Atualização atômica e segura de campo numérico usando o operador `$set`. |
+| **5** | **Avanço de Status do Pedido** | `PATCH /api/pedidos/:id/status` | `PedidosController.atualizarStatus` | Atualização do fluxo do pedido (`preparando`, `entregue`) usando `$set` por `_id`. |
 
 ---
 
@@ -263,52 +263,55 @@ As consultas do Checkpoint 1 não vivem em arquivos soltos: elas alimentam diret
 * **Arquivo:** `app/src/controllers/restaurantes.controller.ts`
 * **Implementação no Controller:**
 ```typescript
-const restaurantes = await col.find(
-  { ativo: true, avaliacao_media: { $gte: 4.0 } },
-  { projection: { nome: 1, avaliacao_media: 1, categorias: 1, "endereco.cidade": 1, _id: 0 } }
-).sort({ avaliacao_media: -1 }).limit(5).toArray();
+const col = getCollection("restaurantes");
+const restaurantes = await col
+  .find({ ativo: true, avaliacao_media: { $gte: 4.0 } })
+  .sort({ avaliacao_media: -1 })
+  .limit(5)
+  .toArray();
 ```
 
-#### 2. Cardápio Seguro (`GET /api/cardapio/seguro?maxPreco=50&semAlergeno=glúten`)
+#### 2. Pratos Econômicos (`GET /api/cardapio/economicos`)
 * **Arquivo:** `app/src/controllers/cardapio.controller.ts`
 * **Implementação no Controller:**
 ```typescript
-const pratos = await col.find(
-  { preco: { $lte: maxPreco }, disponivel: true, alergenos: { $nin: [semAlergeno] } },
-  { projection: { nome: 1, preco: 1, categoria: 1, alergenos: 1 } }
-).sort({ preco: 1 }).toArray();
+const col = getCollection("cardapio");
+const pratos = await col
+  .find({ preco: { $lte: 40.0 }, disponivel: true })
+  .sort({ preco: 1 })
+  .toArray();
 ```
 
 #### 3. Fila da Cozinha / KDS (`GET /api/pedidos/cozinha`)
 * **Arquivo:** `app/src/controllers/pedidos.controller.ts`
 * **Implementação no Controller:**
 ```typescript
-const pedidos = await col.find(
-  { status: { $in: ["pendente", "preparando"] } },
-  { projection: { _id: 1, status: 1, data: 1, itens: 1, "entrega.previsao": 1 } }
-).sort({ data: 1 }).toArray();
+const col = getCollection("pedidos");
+const pedidos = await col
+  .find({ status: { $in: ["pendente", "preparando"] } })
+  .sort({ data: 1 })
+  .toArray();
 ```
 
-#### 4. Histórico do Cliente (`GET /api/pedidos/cliente/:email`)
-* **Arquivo:** `app/src/controllers/pedidos.controller.ts`
-* **Implementação no Controller:**
-```typescript
-const pedidos = await col.find(
-  { cliente_id: cliente._id },
-  { projection: { data: 1, valor_total: 1, status: 1, itens: 1, "entrega.endereco": 1 } }
-).sort({ data: -1 }).limit(5).toArray();
-```
-
-#### 5. Atualização Segura de Item (`PATCH /api/cardapio/:nome`)
+#### 4. Atualização de Preço (`PATCH /api/cardapio/:nome/preco`)
 * **Arquivo:** `app/src/controllers/cardapio.controller.ts`
 * **Implementação no Controller:**
 ```typescript
+const col = getCollection("cardapio");
 await col.updateOne(
-  { nome },
-  {
-    $set: { preco: parseFloat(preco) },
-    $addToSet: { ingredientes: novoIngrediente }
-  }
+  { nome: req.params.nome },
+  { $set: { preco: Number(req.body.preco) } }
+);
+```
+
+#### 5. Avanço de Status do Pedido (`PATCH /api/pedidos/:id/status`)
+* **Arquivo:** `app/src/controllers/pedidos.controller.ts`
+* **Implementação no Controller:**
+```typescript
+const col = getCollection("pedidos");
+await col.updateOne(
+  { _id: new ObjectId(req.params.id) },
+  { $set: { status: req.body.status } }
 );
 ```
 
