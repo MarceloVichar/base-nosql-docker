@@ -1,8 +1,10 @@
 import { Router, Request, Response } from "express";
-import itensRoutes from "./itens.routes.js";
 import { getDb } from "../database/mongo.js";
 import { getRedisClient } from "../database/redis.js";
 import { getElasticClient } from "../database/elastic.js";
+import productsRoutes from "./products.routes.js";
+import ordersRoutes from "./orders.routes.js";
+import reportsRoutes from "./reports.routes.js";
 
 const routes = Router();
 
@@ -48,7 +50,8 @@ routes.get("/health", async (req: Request, res: Response) => {
   res.status(httpStatus).json(status);
 });
 
-// Rota da coleção simples (GET /api/itens)
-routes.use("/itens", itensRoutes);
+routes.use("/products", productsRoutes);
+routes.use("/orders", ordersRoutes);
+routes.use("/reports", reportsRoutes);
 
 export default routes;

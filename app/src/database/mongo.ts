@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const uri = process.env.MONGO_URI || "mongodb://root:root@localhost:27017";
-const dbName = process.env.MONGO_DB_NAME || "gastrohub";
+const dbName = process.env.MONGO_DB_NAME || "totem_ordering_system";
 
 let client: MongoClient | null = null;
 let database: Db | null = null;

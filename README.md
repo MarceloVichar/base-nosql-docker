@@ -47,7 +47,7 @@ Para evitar conflitos com outros programas locais do Ubuntu, utilizamos portas d
 | :--- | :--- | :--- | :--- |
 | **API Starter (Express + TS)** | [http://localhost:3400](http://localhost:3400) | Aplicação com hot-reload ativo | Sem autenticação |
 | **ElasticVue (Elasticsearch)** | [http://localhost:8400](http://localhost:8400) | Interface visual para explorar índices e buscas | Conecta em `http://localhost:9200` |
-| **Mongo Express (MongoDB)** | [http://localhost:8401](http://localhost:8401) | Visualizar coleções do banco **GastroHub** | Já conecta autenticado |
+| **Mongo Express (MongoDB)** | [http://localhost:8401](http://localhost:8401) | Visualizar coleções do banco **totem_ordering_system** | Já conecta autenticado |
 | **Redis Commander (Redis)** | [http://localhost:8402](http://localhost:8402) | Inspecionar chaves, TTLs e valores em memória | Sem necessidade de login |
 | **MongoDB (Porta direta)** | `localhost:27034` | Conexão para Compass, DBeaver ou VS Code | `root` / `root` |
 | **Redis (Porta direta)** | `localhost:6334` | Conexão direta TCP | Sem senha |
@@ -58,12 +58,15 @@ Para evitar conflitos com outros programas locais do Ubuntu, utilizamos portas d
 ## 📡 Endpoints Prontos para Testar
 
 - **Health Check dos 3 Bancos:** [http://localhost:3400/api/health](http://localhost:3400/api/health)
-- **Simple Collection (GET /api/itens):** [http://localhost:3400/api/itens](http://localhost:3400/api/itens)
-  - *Dica:* Na 1ª requisição, você verá `origem: "MONGODB (Salvo no Redis por 60s)"`. Na 2ª requisição, você verá `origem: "REDIS_CACHE (< 2ms)"`!
+- **Produtos disponíveis:** `GET /api/products?store_id=<ObjectId>&category_id=<ObjectId>&page=1&limit=20`
+- **Detalhe do produto:** `GET /api/products/:id?store_id=<ObjectId>`
+- **Fila de preparo:** `GET /api/orders?store_id=<ObjectId>&status=received&page=1&limit=20`
+- **Resumo de vendas:** `GET /api/reports/sales?store_id=<ObjectId>&start=<ISO>&end=<ISO>`
+- **Produtos mais vendidos:** `GET /api/reports/top-products?store_id=<ObjectId>&start=<ISO>&end=<ISO>&limit=10`
 
 ---
 
-## 🧑‍💻 Como Programar e Criar Novas Funções nas Aulas
+## 🧑‍💻 Estrutura da aplicação
 
 Você **não precisa instalar o Node.js na sua máquina** se não quiser. O código da pasta `app/src/` está montado em tempo real no container Docker.
 
@@ -79,46 +82,23 @@ app/src/
 │   ├── redis.ts         # getRedisClient(), cacheGet(), cacheSet()
 │   └── elastic.ts       # getElasticClient()
 ├── controllers/         # Funções que tratam requisições e acessam os bancos
-│   └── itens.controller.ts  # Controller com GET pronto e simples!
+│   ├── products.controller.ts  # Cardápio e detalhe de produtos
+│   ├── orders.controller.ts    # Fila de preparo
+│   └── reports.controller.ts   # Relatórios de vendas
 └── routes/              # Mapeamento de rotas HTTP
     ├── index.ts         # Health check e agregador
-    └── itens.routes.ts  # Rota GET /api/itens
+    ├── products.routes.ts
+    ├── orders.routes.ts
+    └── reports.routes.ts
 ```
 
-### Exemplo: Como adicionar uma nova função no controller
+Todas as rotas da API utilizam o esquema em inglês (`stores`, `categories`,
+`products` e `orders`) e referências BSON `ObjectId`. Os valores monetários são
+expressos em centavos.
 
-Abra `app/src/controllers/itens.controller.ts` e adicione seu método:
-
-```typescript
-import { Request, Response } from "express";
-import { getCollection } from "../database/mongo.js";
-import { cacheSet, cacheGet } from "../database/redis.js";
-
-export class ItensController {
-  // 1. Método que já vem pronto:
-  static async listar(req: Request, res: Response): Promise<void> { ... }
-
-  // 2. Novo método adicionado durante a aula:
-  static async buscarPorCategoria(req: Request, res: Response): Promise<void> {
-    try {
-      const col = getCollection("itens");
-      const categoria = req.params.categoria;
-      const resultados = await col.find({ categoria }).toArray();
-      res.json({ total: resultados.length, resultados });
-    } catch (err: any) {
-      res.status(500).json({ erro: err.message });
-    }
-  }
-}
-```
-
-E registre a rota em `app/src/routes/itens.routes.ts`:
-
-```typescript
-router.get("/categoria/:categoria", ItensController.buscarPorCategoria);
-```
-
-Ao salvar o arquivo (`Ctrl + S`), teste em: `http://localhost:3400/api/itens/categoria/Pizzas`.
+Para adicionar novas consultas, crie o controller e a rota correspondente e
+registre o conjunto em `app/src/routes/index.ts`. Durante o desenvolvimento,
+o servidor pode ser iniciado com `npm run dev` dentro da pasta `app`.
 
 ---
 
@@ -155,7 +135,7 @@ init/
   ```bash
   ./parar.sh
   ```
-- **Resetar tudo para o estado original de fábrica (GastroHub limpo):**
+- **Resetar tudo para o estado original de fábrica (banco `totem_ordering_system` limpo):**
   ```bash
   ./reset.sh
   ```

@@ -1,145 +1,141 @@
 /**
- * ============================================================================
- * MONGODB INITIALIZATION SCRIPT — GASTROHUB / PROJETO
- * ============================================================================
- * 
- * Este arquivo é executado automaticamente na primeira inicialização do MongoDB.
- * Aqui você define:
- * 1. O banco de dados do seu sistema
- * 2. As coleções
- * 3. A criação de ÍNDICES (performance e unicidade)
- * 4. A inserção dos dados iniciais
+ * Initial data for the self-service ordering system.
+ * Executed by MongoDB when initializing an empty volume.
+ * English schema; customer-facing content remains in Portuguese.
  */
+db = db.getSiblingDB("totem_ordering_system");
 
-db = db.getSiblingDB("gastrohub");
+for (const name of ["stores", "categories", "products", "orders"]) {
+  db.createCollection(name);
+}
 
-// ── 1. COLEÇÃO SIMPLES: itens (para início rápido) ───────────────────────────
-db.createCollection("itens");
-db.itens.createIndex({ "categoria": 1 });
-db.itens.createIndex({ "preco": 1 });
+db.categories.createIndex({ name: 1 }, { unique: true });
+db.products.createIndex({ store_id: 1, available: 1, name: 1, _id: 1 });
+db.products.createIndex({ store_id: 1, category_id: 1, available: 1, name: 1, _id: 1 });
+db.orders.createIndex({ store_id: 1, status: 1, created_at: 1, _id: 1 });
 
-db.itens.insertMany([
-  { nome: "Pizza Margherita", categoria: "Pizzas", preco: 45.90, tags: ["italiana", "queijo"] },
-  { nome: "Combo Sashimi", categoria: "Japonesa", preco: 69.90, tags: ["peixe", "fresco"] },
-  { nome: "Classic Burger", categoria: "Burgers", preco: 32.90, tags: ["artesanal", "carne"] },
-  { nome: "Taco de Carne", categoria: "Mexicana", preco: 19.90, tags: ["crocante", "picante"] },
-  { nome: "Prato Feito Mineiro", categoria: "Brasileira", preco: 24.90, tags: ["caseira", "completo"] }
-]);
-
-// ── 2. COLEÇÃO: restaurantes ──────────────────────────────────────────────────
-db.createCollection("restaurantes");
-db.restaurantes.createIndex({ "nome": 1 });
-db.restaurantes.createIndex({ "ativo": 1 });
-db.restaurantes.createIndex({ "categorias": 1 });
-
-db.restaurantes.insertMany([
+const stores = [
   {
-    nome: "Sushi Kazu",
-    endereco: { rua: "Rua das Flores", numero: 120, cidade: "Guarapuava", cep: "85010-000" },
-    categorias: ["Japonesa", "Asiática"],
-    horario: { abertura: "11:00", fechamento: "23:00" },
-    avaliacao_media: 4.7,
-    ativo: true
+    name: "Estação do Lanche — Centro",
+    active: true,
+    address: {
+      street: "Rua XV de Novembro", number: "880", neighborhood: "Centro",
+      city: "Guarapuava", state: "PR", postal_code: "85010-000"
+    },
+    settings: { estimated_preparation_minutes: NumberInt(15), allows_customization: true },
+    created_at: new Date("2026-09-08T12:00:00Z")
   },
   {
-    nome: "Pizzaria Napoli",
-    endereco: { rua: "Av. Manoel Ribas", numero: 450, cidade: "Guarapuava", cep: "85010-100" },
-    categorias: ["Italiana", "Pizzaria"],
-    horario: { abertura: "18:00", fechamento: "00:00" },
-    avaliacao_media: 4.3,
-    ativo: true
-  },
-  {
-    nome: "Burger House",
-    endereco: { rua: "Rua XV de Novembro", numero: 88, cidade: "Guarapuava", cep: "85010-200" },
-    categorias: ["Hambúrguer", "Fast Food"],
-    horario: { abertura: "11:30", fechamento: "22:00" },
-    avaliacao_media: 4.1,
-    ativo: true
-  },
-  {
-    nome: "Sabor Mineiro",
-    endereco: { rua: "Rua Saldanha Marinho", numero: 300, cidade: "Guarapuava", cep: "85010-300" },
-    categorias: ["Brasileira", "Comida Caseira"],
-    horario: { abertura: "11:00", fechamento: "15:00" },
-    avaliacao_media: 4.5,
-    ativo: true
-  },
-  {
-    nome: "Taco Loco",
-    endereco: { rua: "Rua Benjamin Constant", numero: 55, cidade: "Guarapuava", cep: "85010-400" },
-    categorias: ["Mexicana"],
-    horario: { abertura: "12:00", fechamento: "22:30" },
-    avaliacao_media: 3.9,
-    ativo: false
+    name: "Estação do Lanche — Santa Cruz",
+    active: true,
+    address: {
+      street: "Rua Padre Salvador", number: "420", neighborhood: "Santa Cruz",
+      city: "Guarapuava", state: "PR", postal_code: "85015-430"
+    },
+    settings: { estimated_preparation_minutes: NumberInt(20), allows_customization: true },
+    created_at: new Date("2026-09-08T12:05:00Z")
   }
-]);
+];
 
-const restaurantes = db.restaurantes.find().toArray();
-const idSushi = restaurantes[0]._id;
-const idPizzaria = restaurantes[1]._id;
-const idBurger = restaurantes[2]._id;
-const idMineiro = restaurantes[3]._id;
-const idTaco = restaurantes[4]._id;
+const storeIds = db.stores.insertMany(stores).insertedIds;
 
-// ── 3. COLEÇÃO: cardapio ─────────────────────────────────────────────────────
-db.createCollection("cardapio");
-db.cardapio.createIndex({ "restaurante_id": 1 });
-db.cardapio.createIndex({ "preco": 1 });
-db.cardapio.createIndex({ "categoria": 1 });
+const categories = [
+  { name: "Lanches", description: "Hambúrgueres e sanduíches preparados na loja", display_order: NumberInt(1), active: true },
+  { name: "Bebidas", description: "Sucos e bebidas geladas", display_order: NumberInt(2), active: true },
+  { name: "Acompanhamentos", description: "Porções para acompanhar o lanche", display_order: NumberInt(3), active: true },
+  { name: "Sobremesas", description: "Doces e sobremesas individuais", display_order: NumberInt(4), active: false }
+].map(category => ({ ...category, created_at: new Date("2026-09-08T12:10:00Z") }));
 
-db.cardapio.insertMany([
-  { restaurante_id: idSushi, nome: "Combo Sashimi", descricao: "15 fatias de sashimi variado", preco: 69.90, categoria: "Combos", disponivel: true, ingredientes: ["salmão", "atum", "peixe branco"], alergenos: ["peixe"] },
-  { restaurante_id: idSushi, nome: "Temaki Salmão", descricao: "Temaki de salmão com cream cheese", preco: 28.90, categoria: "Temaki", disponivel: true, ingredientes: ["salmão", "cream cheese", "arroz", "nori"], alergenos: ["peixe", "leite"] },
-  { restaurante_id: idSushi, nome: "Hot Roll", descricao: "8 unidades empanadas com cream cheese", preco: 32.90, categoria: "Empanados", disponivel: true, ingredientes: ["salmão", "cream cheese", "arroz"], alergenos: ["peixe", "leite", "glúten"] },
-  { restaurante_id: idPizzaria, nome: "Pizza Margherita", descricao: "Molho de tomate, mozzarella e manjericão", preco: 45.90, categoria: "Pizzas", disponivel: true, ingredientes: ["molho de tomate", "mozzarella", "manjericão"], alergenos: ["leite", "glúten"] },
-  { restaurante_id: idPizzaria, nome: "Pizza Calabresa", descricao: "Calabresa fatiada com cebola", preco: 42.90, categoria: "Pizzas", disponivel: true, ingredientes: ["calabresa", "cebola", "mozzarella"], alergenos: ["leite", "glúten"] },
-  { restaurante_id: idPizzaria, nome: "Calzone Frango", descricao: "Calzone recheado com frango e catupiry", preco: 38.90, categoria: "Calzones", disponivel: false, ingredientes: ["frango", "catupiry", "massa"], alergenos: ["leite", "glúten"] },
-  { restaurante_id: idBurger, nome: "Classic Burger", descricao: "Hambúrguer artesanal 180g com queijo", preco: 32.90, categoria: "Burgers", disponivel: true, ingredientes: ["carne bovina", "queijo cheddar", "alface", "tomate"], alergenos: ["leite", "glúten"] },
-  { restaurante_id: idBurger, nome: "Smash Burger", descricao: "Dois smash patties com cebola caramelizada", preco: 36.90, categoria: "Burgers", disponivel: true, ingredientes: ["carne bovina", "cebola", "queijo", "pão brioche"], alergenos: ["leite", "glúten"] },
-  { restaurante_id: idBurger, nome: "Batata Frita G", descricao: "Porção grande de batata frita crocante", preco: 18.90, categoria: "Acompanhamentos", disponivel: true, ingredientes: ["batata"], alergenos: [] },
-  { restaurante_id: idMineiro, nome: "Prato Feito", descricao: "Arroz, feijão, bife, ovo frito e salada", preco: 24.90, categoria: "Pratos", disponivel: true, ingredientes: ["arroz", "feijão", "carne bovina", "ovo"], alergenos: ["ovo"] },
-  { restaurante_id: idMineiro, nome: "Frango com Quiabo", descricao: "Frango caipira com quiabo e angu", preco: 29.90, categoria: "Pratos", disponivel: true, ingredientes: ["frango", "quiabo", "fubá"], alergenos: ["glúten"] },
-  { restaurante_id: idMineiro, nome: "Pão de Queijo (10un)", descricao: "Pão de queijo mineiro artesanal", preco: 15.90, categoria: "Lanches", disponivel: true, ingredientes: ["polvilho", "queijo", "ovo"], alergenos: ["leite", "ovo"] },
-  { restaurante_id: idTaco, nome: "Taco de Carne", descricao: "Tortilha com carne moída temperada", preco: 19.90, categoria: "Tacos", disponivel: true, ingredientes: ["carne moída", "tortilha", "alface", "queijo"], alergenos: ["leite", "glúten"] },
-  { restaurante_id: idTaco, nome: "Burrito Frango", descricao: "Burrito grande com frango desfiado", preco: 28.90, categoria: "Burritos", disponivel: true, ingredientes: ["frango", "arroz", "feijão", "tortilha"], alergenos: ["glúten"] },
-  { restaurante_id: idTaco, nome: "Nachos Supreme", descricao: "Nachos com guacamole e sour cream", preco: 34.90, categoria: "Porções", disponivel: true, ingredientes: ["tortilha chips", "guacamole", "sour cream", "jalapeño"], alergenos: ["leite"] }
-]);
+const categoryIds = db.categories.insertMany(categories).insertedIds;
 
-// ── 4. COLEÇÃO: clientes ─────────────────────────────────────────────────────
-db.createCollection("clientes");
-db.clientes.createIndex({ "email": 1 }, { unique: true });
-db.clientes.createIndex({ "telefone": 1 });
+// Each row represents a store-specific product with independent stock.
+// Sample nutrition per unit: kcal, protein, carbohydrates and fat.
+const catalog = [
+  [storeIds[0], categoryIds[0], "Big Burger Bacon", "Hambúrguer artesanal com queijo, bacon e molho especial", 3290, 150, true, false, ["Pão brioche", "Hambúrguer 180g", "Queijo", "Bacon", "Molho especial"], ["hamburguer", "bacon", "mais_vendidos"], [720, 32.5, 48, 39.2, true]],
+  [storeIds[0], categoryIds[0], "Sanduíche de Frango", "Frango grelhado com salada no pão integral", 2490, 40, true, true, ["Pão integral", "Frango", "Alface", "Tomate"], ["frango", "grelhado"], [410, 29, 42, 13, true]],
+  [storeIds[0], categoryIds[1], "Suco de Laranja 300 ml", "Suco natural de laranja sem açúcar adicionado", 990, 30, true, false, ["Laranja"], ["suco", "gelado"], [135, 2, 31, 0.5, false]],
+  [storeIds[0], categoryIds[1], "Água Mineral 500 ml", "Água mineral sem gás", 500, 0, true, false, ["Água mineral"], ["agua"], [0, 0, 0, 0, false]],
+  [storeIds[0], categoryIds[2], "Batata Rústica", "Porção de batatas com casca e alecrim", 1690, 35, true, true, ["Batata", "Óleo vegetal", "Sal", "Alecrim"], ["porcao"], [360, 4, 48, 17, false]],
+  [storeIds[0], categoryIds[3], "Brownie Individual", "Brownie de chocolate", 1290, 10, false, false, ["Chocolate", "Farinha de trigo", "Ovo", "Manteiga", "Açúcar"], ["chocolate"], [320, 5, 39, 16, true]],
+  [storeIds[1], categoryIds[0], "Big Burger Bacon", "Hambúrguer artesanal com queijo, bacon e molho especial", 3490, 70, true, true, ["Pão brioche", "Hambúrguer 180g", "Queijo", "Bacon", "Molho especial"], ["hamburguer", "bacon"], [720, 32.5, 48, 39.2, true]],
+  [storeIds[1], categoryIds[0], "Burger de Grão-de-Bico", "Hambúrguer de grão-de-bico com salada", 2890, 25, true, false, ["Pão", "Grão-de-bico", "Alface", "Tomate"], ["vegetariano"], [430, 16, 58, 15, true]],
+  [storeIds[1], categoryIds[1], "Suco de Uva 300 ml", "Suco integral de uva", 1090, 45, true, false, ["Suco de uva integral"], ["suco", "gelado"], [180, 1, 44, 0, false]],
+  [storeIds[1], categoryIds[1], "Água Mineral 500 ml", "Água mineral sem gás", 500, 60, true, false, ["Água mineral"], ["agua"], [0, 0, 0, 0, false]],
+  [storeIds[1], categoryIds[2], "Anéis de Cebola", "Porção de cebolas empanadas", 1890, 20, true, false, ["Cebola", "Farinha de trigo", "Óleo vegetal", "Sal"], ["porcao", "crocante"], [390, 5, 46, 21, true]],
+  [storeIds[1], categoryIds[3], "Pudim Individual", "Pudim de leite com calda de caramelo", 1190, 15, true, false, ["Leite", "Leite condensado", "Ovo", "Açúcar"], ["doce"], [280, 7, 45, 8, false]]
+];
 
-db.clientes.insertMany([
-  {
-    nome: "Ana Silva",
-    email: "ana@email.com",
-    telefone: "42999001001",
-    enderecos: [
-      { rua: "Rua Guaíra", numero: 200, cidade: "Guarapuava", cep: "85015-000", principal: true },
-      { rua: "Rua Ponta Grossa", numero: 50, cidade: "Guarapuava", cep: "85015-100", principal: false }
-    ],
-    favoritos: [idSushi, idBurger]
+const products = catalog.map(([store, category, name, description, price, stock, available, featured, ingredients, tags, nutrients], index) => ({
+  store_id: store, category_id: category, name, description,
+  price_cents: NumberInt(price), stock: NumberInt(stock), available, featured,
+  nutrition: {
+    calories: Double(nutrients[0]), protein: Double(nutrients[1]),
+    carbohydrates: Double(nutrients[2]), fat: Double(nutrients[3]),
+    contains_gluten: nutrients[4]
   },
-  {
-    nome: "Bruno Costa",
-    email: "bruno@email.com",
-    telefone: "42999002002",
-    enderecos: [
-      { rua: "Av. Manoel Ribas", numero: 1500, cidade: "Guarapuava", cep: "85010-500", principal: true }
-    ],
-    favoritos: [idPizzaria]
-  },
-  {
-    nome: "Carla Mendes",
-    email: "carla@email.com",
-    telefone: "42999003003",
-    enderecos: [
-      { rua: "Rua Saldanha Marinho", numero: 800, cidade: "Guarapuava", cep: "85010-300", principal: true }
-    ],
-    favoritos: [idMineiro, idSushi]
+  ingredients, tags,
+  customization_groups: [0, 6].includes(index) ? [{
+    name: "Adicionais", minimum: NumberInt(0), maximum: NumberInt(2),
+    options: [
+      { name: "Bacon extra", additional_price_cents: NumberInt(450) },
+      { name: "Queijo extra", additional_price_cents: NumberInt(300) }
+    ]
+  }] : [],
+  created_at: new Date("2026-09-08T13:00:00Z")
+}));
+
+const productIds = db.products.insertMany(products).insertedIds;
+
+// Snapshot commercial data to preserve order history.
+function createItem(productIndex, quantity, withBacon = false, note = "") {
+  const product = products[productIndex];
+  if (!product) throw new Error(`Product not found: ${productIndex}`);
+  const customizations = withBacon ? [{
+    group: "Adicionais", option: "Bacon extra", additional_price_cents: NumberInt(450)
+  }] : [];
+  const unitPrice = Number(product.price_cents) + (withBacon ? 450 : 0);
+  return {
+    product_id: productIds[productIndex], product_name: product.name, quantity: NumberInt(quantity),
+    base_price_cents: product.price_cents, customizations,
+    unit_price_cents: NumberInt(unitPrice),
+    subtotal_cents: NumberInt(unitPrice * quantity), note
+  };
+}
+
+function createOrder(store, terminal, status, createdAt, updatedAt, items) {
+  return {
+    store_id: store, terminal_code: terminal, status, items,
+    total_cents: NumberInt(items.reduce((total, item) => total + Number(item.subtotal_cents), 0)),
+    created_at: new Date(createdAt), updated_at: new Date(updatedAt)
+  };
+}
+
+const orders = [
+  createOrder(storeIds[0], "TOTEM-01", "completed", "2026-09-09T15:30:00Z", "2026-09-09T15:48:00Z", [createItem(0, 2, true, "Sem molho especial")]),
+  createOrder(storeIds[0], "TOTEM-02", "completed", "2026-09-09T16:00:00Z", "2026-09-09T16:20:00Z", [createItem(1, 1), createItem(2, 1)]),
+  createOrder(storeIds[0], "TOTEM-01", "cancelled", "2026-09-09T17:00:00Z", "2026-09-09T17:02:00Z", [createItem(0, 1)]),
+  createOrder(storeIds[1], "TOTEM-01", "completed", "2026-09-09T15:40:00Z", "2026-09-09T16:00:00Z", [createItem(6, 1, true), createItem(8, 2)]),
+  createOrder(storeIds[1], "TOTEM-02", "completed", "2026-09-09T18:00:00Z", "2026-09-09T18:25:00Z", [createItem(7, 2), createItem(10, 1)]),
+  createOrder(storeIds[1], "TOTEM-01", "cancelled", "2026-09-09T19:00:00Z", "2026-09-09T19:03:00Z", [createItem(6, 1)]),
+  createOrder(storeIds[0], "TOTEM-01", "completed", "2026-09-10T14:00:00Z", "2026-09-10T14:20:00Z", [createItem(0, 1), createItem(4, 1)]),
+  createOrder(storeIds[1], "TOTEM-01", "completed", "2026-09-10T14:10:00Z", "2026-09-10T14:35:00Z", [createItem(6, 2), createItem(9, 2)]),
+  createOrder(storeIds[0], "TOTEM-02", "received", "2026-09-10T15:00:00Z", "2026-09-10T15:00:00Z", [createItem(1, 2), createItem(2, 2)]),
+  createOrder(storeIds[0], "TOTEM-01", "preparing", "2026-09-10T14:55:00Z", "2026-09-10T15:01:00Z", [createItem(0, 1, true), createItem(4, 1)]),
+  createOrder(storeIds[1], "TOTEM-02", "ready", "2026-09-10T14:40:00Z", "2026-09-10T15:00:00Z", [createItem(7, 1), createItem(8, 1)]),
+  createOrder(storeIds[1], "TOTEM-01", "received", "2026-09-10T15:02:00Z", "2026-09-10T15:02:00Z", [createItem(6, 1), createItem(10, 1)])
+];
+
+// Check each item belongs to the order's store before inserting orders.
+for (const order of orders) {
+  for (const item of order.items) {
+    const productIndex = Object.values(productIds).findIndex(id => id.equals(item.product_id));
+    if (productIndex < 0 || !products[productIndex].store_id.equals(order.store_id)) {
+      throw new Error("Order item belongs to another store");
+    }
   }
-]);
+}
 
-print("=== [MongoDB] Inicialização concluída com sucesso! ===");
+db.orders.insertMany(orders);
+print("Totem Ordering System: 30 documents inserted with generated ObjectIds.");
+for (const [index, store] of stores.entries()) print(`Store ${store.name}: ${storeIds[index]}`);
+for (const [index, category] of categories.entries()) print(`Category ${category.name}: ${categoryIds[index]}`);
