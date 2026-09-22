@@ -27,52 +27,34 @@ Se os containers ainda não estiverem rodando, suba a infraestrutura na raiz do 
 
 ### Experimento 1: Latência — Sem Cache vs Cache Miss vs Cache Hit
 
-Para entender a diferença de implementação, disponibilizamos dois métodos no controller:
-* `listarEconomicosSemCache`: consulta direta no MongoDB (disco).
-* `listarEconomicos`: padrão Cache-Aside gerenciado pelo Redis (RAM).
+Para manter o código do controller 100% focado em banco de dados (sem poluição com medição manual), a medição do tempo de resposta é feita diretamente pelo cliente HTTP utilizando o parâmetro `-w` do `curl`.
 
 #### Passo 1.1: Consulta direta no MongoDB (Baseline sem cache)
+Observe a resposta da rota:
 ```bash
-curl -s http://localhost:3400/api/cardapio/economicos-sem-cache | jq '{origem, tempo_resposta, total_itens}'
+curl -s http://localhost:3400/api/cardapio/economicos-sem-cache | jq '{origem, total_itens}'
 ```
-**Saída esperada:**
-```json
-{
-  "origem": "MONGODB (SEM CACHE)",
-  "tempo_resposta": "18.40 ms",
-  "total_itens": 11
-}
+Agora, meça o tempo da requisição ao disco:
+```bash
+curl -s -o /dev/null -w "⏱️  Tempo no MongoDB: %{time_total}s\n" http://localhost:3400/api/cardapio/economicos-sem-cache
 ```
-> **O que ocorreu:** O backend foi diretamente ao disco do MongoDB, executou a query de filtro e retornou. Toda requisição a essa rota repetirá esse custo de I/O.
+> **O que ocorreu:** O backend foi diretamente ao disco do MongoDB, executou a query de filtro e retornou. Toda requisição a essa rota repetirá esse custo contínuo de I/O em disco.
 
 #### Passo 1.2: Primeira chamada no endpoint com Cache (Cache Miss)
+Consulte e meça o tempo da primeira requisição:
 ```bash
-curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_resposta, total_itens}'
+curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, total_itens}'
+curl -s -o /dev/null -w "⏱️  Tempo Cache Miss: %{time_total}s\n" http://localhost:3400/api/cardapio/economicos
 ```
-**Saída esperada:**
-```json
-{
-  "origem": "MONGODB (CACHE MISS)",
-  "tempo_resposta": "16.80 ms",
-  "total_itens": 11
-}
-```
-> **O que ocorreu:** O Redis não possuía a chave `gastrohub:cardapio:economicos`. A aplicação buscou no MongoDB, salvou a resposta no Redis com TTL de 60 segundos e entregou o resultado.
+> **O que ocorreu:** O Redis não possuía a chave `gastrohub:cardapio:economicos`. A aplicação buscou no MongoDB, salvou a resposta no Redis com TTL de 60 segundos e entregou o resultado com a origem `MONGODB (CACHE MISS)`.
 
 #### Passo 1.3: Segunda chamada imediata (Cache Hit — Servido da Memória RAM)
+Execute novamente de imediato:
 ```bash
-curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_resposta, ttl_restante_segundos, total_itens}'
+curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, total_itens}'
+curl -s -o /dev/null -w "⏱️  Tempo Cache Hit:  %{time_total}s\n" http://localhost:3400/api/cardapio/economicos
 ```
-**Saída esperada:**
-```json
-{
-  "origem": "REDIS (CACHE HIT)",
-  "tempo_resposta": "0.95 ms",
-  "ttl_restante_segundos": 58,
-  "total_itens": 11
-}
-```
-> **O que ocorreu:** O backend encontrou o resultado na memória RAM do Redis e respondeu em **menos de 1 milissegundo** — uma queda drástica de latência sem onerar o banco de dados.
+> **O que ocorreu:** O backend encontrou o resultado pronto na memória RAM do Redis e respondeu instantaneamente (`REDIS (CACHE HIT)`), com tempo drasticamente menor e sem onerar o MongoDB!
 
 ---
 
