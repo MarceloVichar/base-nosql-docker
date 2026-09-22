@@ -24,9 +24,9 @@ export class CardapioController {
   /**
    * 2A. PRATOS ECONÔMICOS — SEM CACHE (Baseline MongoDB)
    * GET /api/cardapio/economicos-sem-cache
-   * Consulta direta no MongoDB (disco)
    */
   static async listarEconomicosSemCache(req: Request, res: Response): Promise<void> {
+    const t0 = performance.now();
     try {
       const col = getCollection("cardapio");
       const pratos = await col
@@ -37,8 +37,11 @@ export class CardapioController {
         .sort({ preco: 1 })
         .toArray();
 
+      const tempoMs = (performance.now() - t0).toFixed(2);
+
       res.json({
         origem: "MONGODB (SEM CACHE)",
+        tempo_resposta: `${tempoMs} ms`,
         total_itens: pratos.length,
         dados: pratos,
       });
@@ -56,13 +59,16 @@ export class CardapioController {
    * 3. Salva no Redis com TTL de 60s para as próximas requisições.
    */
   static async listarEconomicos(req: Request, res: Response): Promise<void> {
+    const t0 = performance.now();
     try {
       // ── PASSO 1: TENTAR BUSCAR NO CACHE (REDIS) ──────────────────────────
       const cached = await cacheGet<any[]>(CHAVE_CACHE_ECONOMICOS);
 
       if (cached) {
+        const tempoMs = (performance.now() - t0).toFixed(2);
         res.json({
           origem: "REDIS (CACHE HIT)",
+          tempo_resposta: `${tempoMs} ms`,
           total_itens: cached.length,
           dados: cached,
         });
@@ -82,8 +88,11 @@ export class CardapioController {
       // ── PASSO 3: POPULAR O CACHE NO REDIS COM TTL DE 60s ─────────────────
       await cacheSet(CHAVE_CACHE_ECONOMICOS, pratos, TTL_CACHE_SEGUNDOS);
 
+      const tempoMs = (performance.now() - t0).toFixed(2);
+
       res.json({
         origem: "MONGODB (CACHE MISS)",
+        tempo_resposta: `${tempoMs} ms`,
         total_itens: pratos.length,
         dados: pratos,
       });
