@@ -79,26 +79,26 @@ curl -s "http://localhost:3400/api/cardapio/economicos?cache=false" | jq '{orige
 
 ### Experimento 3: O Perigo do Dado Obsoleto (*Stale Data*) e Invalidação Ativa
 
-#### Passo 3.1: Garantir que o cache está ativo na memória
-Faça uma chamada inicial para carregar o cardápio no Redis (preço original do Combo Sashimi: R$ 29.90):
+#### Passo 3.1: Garantir que o cardápio está em cache na memória
+Faça uma chamada inicial para carregar o cardápio no Redis (preço oficial de semente do **Prato Feito**: R$ 24.90):
 ```bash
 curl -s http://localhost:3400/api/cardapio/economicos > /dev/null
 ```
 
 #### Passo 3.2: Atualizar o preço no MongoDB SEM invalidar o cache
-Simulamos o caso em que o preço do prato sobe para **R$ 35.00** no banco de dados, mas o cache não é avisado (`invalida_cache=false`):
+Simulamos o caso em que o preço do prato sobe para **R$ 34.90** no banco de dados, mas o cache não é avisado (`invalida_cache=false`):
 ```bash
-curl -s -X PATCH "http://localhost:3400/api/cardapio/Combo%20Sashimi/preco?invalida_cache=false" \
+curl -s -X PATCH "http://localhost:3400/api/cardapio/Prato%20Feito/preco?invalida_cache=false" \
   -H "Content-Type: application/json" \
-  -d '{"preco": 35.00}' | jq '{mensagem, novo_preco, cache_invalidado, aviso}'
+  -d '{"preco": 34.90}' | jq '{mensagem, novo_preco, cache_invalidado, aviso}'
 ```
 
 #### Passo 3.3: Consultar o cardápio econômico novamente
 ```bash
-curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, prato: (.dados[]? | select(.nome == "Combo Sashimi") | {nome, preco})}'
+curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, prato: (.dados[]? | select(.nome == "Prato Feito") | {nome, preco})}'
 ```
-> **Perceba o problema:** O preço retornado continua sendo **R$ 29.90** com origem `REDIS (CACHE HIT)`!  
-> O MongoDB já está atualizado com R$ 35.00, mas a aplicação continua entregando o dado velho que estava na memória RAM. Isso é **Stale Data** (dado obsoleto).
+> **Perceba o problema:** O preço retornado continua sendo **R$ 24.90** com origem `REDIS (CACHE HIT)`!  
+> O MongoDB já está atualizado com R$ 34.90, mas a aplicação continua entregando o dado velho que estava na memória RAM. Isso é **Stale Data** (dado obsoleto).
 
 #### Passo 3.4: Executando a Invalidação Ativa do Cache
 Para corrigir a inconsistência, acionamos o endpoint que remove a chave defasada do Redis:
@@ -108,16 +108,16 @@ curl -s -X DELETE http://localhost:3400/api/cardapio/cache | jq .
 
 #### Passo 3.5: Reconsultando após a invalidação
 ```bash
-curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_resposta, prato: (.dados[]? | select(.nome == "Combo Sashimi") | {nome, preco})}'
+curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_resposta, prato: (.dados[]? | select(.nome == "Prato Feito") | {nome, preco})}'
 ```
-> **Resultado:** Ocorre um novo `MONGODB (CACHE MISS)`. A aplicação busca o dado fresco diretamente do MongoDB em disco, entrega o novo preço de **R$ 35.00** e repovoa o Redis!
+> **Resultado:** Ocorre um novo `MONGODB (CACHE MISS)`. A aplicação busca o dado fresco diretamente do MongoDB em disco, entrega o novo preço de **R$ 34.90** e repovoa o Redis!
 
 #### Passo 3.6: Restaurar o preço original (Boa Prática de Limpeza)
-Restaure o valor original de R$ 29.90 com invalidação automática:
+Restaure o valor original de semente de R$ 24.90 com invalidação automática:
 ```bash
-curl -s -X PATCH "http://localhost:3400/api/cardapio/Combo%20Sashimi/preco" \
+curl -s -X PATCH "http://localhost:3400/api/cardapio/Prato%20Feito/preco" \
   -H "Content-Type: application/json" \
-  -d '{"preco": 29.90}' | jq '{mensagem, novo_preco}'
+  -d '{"preco": 24.90}' | jq '{mensagem, novo_preco}'
 ```
 
 ---
@@ -128,15 +128,15 @@ Imagine contar visualizações de produtos ou cliques de banners. Fazer `updateO
 
 #### Passo 4.1: Registrar visualização de um prato
 ```bash
-curl -s -X POST "http://localhost:3400/api/cardapio/Combo%20Sashimi/view" | jq .
+curl -s -X POST "http://localhost:3400/api/cardapio/Prato%20Feito/view" | jq .
 ```
 Execute um loop rápido simulando múltiplos acessos concorrentes:
 ```bash
-for i in {1..5}; do curl -s -X POST "http://localhost:3400/api/cardapio/Combo%20Sashimi/view" | jq -c '{prato, total_visualizacoes}'; done
+for i in {1..5}; do curl -s -X POST "http://localhost:3400/api/cardapio/Prato%20Feito/view" | jq -c '{prato, total_visualizacoes}'; done
 ```
 
 #### Passo 4.2: Conferir no Redis Commander
-Vá em [http://localhost:8402](http://localhost:8402) e veja a chave `gastrohub:views:Combo Sashimi` com o valor numérico incrementado atomicamente sem sobrecarregar o banco de dados!
+Vá em [http://localhost:8402](http://localhost:8402) e veja a chave `gastrohub:views:Prato Feito` com o valor numérico incrementado atomicamente sem sobrecarregar o banco de dados!
 
 ---
 
