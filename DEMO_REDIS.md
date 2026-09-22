@@ -63,7 +63,7 @@ curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_respo
 ```bash
 curl -s "http://localhost:3400/api/cardapio/economicos?cache=false" | jq '{origem, tempo_resposta}'
 ```
-> Mostra aos alunos que bater no MongoDB repetidamente sempre incorre no custo de I/O de rede e disco.
+> **Observação técnica:** Ao informar `?cache=false`, a aplicação ignora propositalmente a memória e busca os dados no MongoDB em disco, evidenciando o custo contínuo de I/O.
 
 ---
 
@@ -79,54 +79,68 @@ curl -s "http://localhost:3400/api/cardapio/economicos?cache=false" | jq '{orige
 
 ### Experimento 3: O Perigo do Dado Obsoleto (*Stale Data*) e Invalidação Ativa
 
-#### Passo 3.1: Atualizar o preço no MongoDB SEM invalidar o cache
-Simulamos o caso clássico de descompasso de dados:
+#### Passo 3.1: Garantir que o cache está ativo na memória
+Faça uma chamada inicial para carregar o cardápio no Redis (preço original do Combo Sashimi: R$ 29.90):
 ```bash
-curl -X PATCH "http://localhost:3400/api/cardapio/Combo%20Sashimi/preco?invalida_cache=false" \
+curl -s http://localhost:3400/api/cardapio/economicos > /dev/null
+```
+
+#### Passo 3.2: Atualizar o preço no MongoDB SEM invalidar o cache
+Simulamos o caso em que o preço do prato sobe para **R$ 35.00** no banco de dados, mas o cache não é avisado (`invalida_cache=false`):
+```bash
+curl -s -X PATCH "http://localhost:3400/api/cardapio/Combo%20Sashimi/preco?invalida_cache=false" \
   -H "Content-Type: application/json" \
-  -d '{"preco": 29.90}' | jq .
+  -d '{"preco": 35.00}' | jq '{mensagem, novo_preco, cache_invalidado, aviso}'
 ```
 
-#### Passo 3.2: Consultar o cardápio econômico novamente
+#### Passo 3.3: Consultar o cardápio econômico novamente
 ```bash
-curl -s http://localhost:3400/api/cardapio/economicos | jq '.dados[] | select(.nome == "Combo Sashimi") | {nome, preco}'
+curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, prato: (.dados[]? | select(.nome == "Combo Sashimi") | {nome, preco})}'
 ```
-> **Perceba o problema:** O preço retornado continua sendo o **preço antigo**!  
-> Isso acontece porque o cache ainda é válido no Redis e não foi notificado da alteração no MongoDB. Isso é **Stale Data** (dado obsoleto).
+> **Perceba o problema:** O preço retornado continua sendo **R$ 29.90** com origem `REDIS (CACHE HIT)`!  
+> O MongoDB já está atualizado com R$ 35.00, mas a aplicação continua entregando o dado velho que estava na memória RAM. Isso é **Stale Data** (dado obsoleto).
 
-#### Passo 3.3: Executando a Invalidação Ativa do Cache
-Para corrigir, limpamos a chave do cache:
+#### Passo 3.4: Executando a Invalidação Ativa do Cache
+Para corrigir a inconsistência, acionamos o endpoint que remove a chave defasada do Redis:
 ```bash
-curl -X DELETE http://localhost:3400/api/cardapio/cache | jq .
+curl -s -X DELETE http://localhost:3400/api/cardapio/cache | jq .
 ```
 
-#### Passo 3.4: Reconsultando após invalidação
+#### Passo 3.5: Reconsultando após a invalidação
 ```bash
-curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_resposta, item_atualizado: (.dados[] | select(.nome == "Combo Sashimi") | {nome, preco})}'
+curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_resposta, prato: (.dados[]? | select(.nome == "Combo Sashimi") | {nome, preco})}'
 ```
-> **Resultado:** Ocorre um novo `CACHE MISS`, o backend recarrega os dados frescos do MongoDB com o novo preço de R$ 29.90 e o cache é repovoado.
+> **Resultado:** Ocorre um novo `MONGODB (CACHE MISS)`. A aplicação busca o dado fresco diretamente do MongoDB em disco, entrega o novo preço de **R$ 35.00** e repovoa o Redis!
+
+#### Passo 3.6: Restaurar o preço original (Boa Prática de Limpeza)
+Restaure o valor original de R$ 29.90 com invalidação automática:
+```bash
+curl -s -X PATCH "http://localhost:3400/api/cardapio/Combo%20Sashimi/preco" \
+  -H "Content-Type: application/json" \
+  -d '{"preco": 29.90}' | jq '{mensagem, novo_preco}'
+```
 
 ---
 
 ### Experimento 4: Contadores Atômicos em Memória (`INCR`)
 
-Imagine contar visualizações de produtos ou cliques de banners. Fazer `updateOne` com `$inc` no MongoDB em cada clique gera escrita em disco e lock de documentos. No Redis, usamos contadores atômicos em RAM:
+Imagine contar visualizações de produtos ou cliques de banners. Fazer `updateOne` com `$inc` no MongoDB a cada clique gera escritas repetitivas em disco. No Redis, usamos contadores atômicos em RAM:
 
 #### Passo 4.1: Registrar visualização de um prato
 ```bash
-curl -X POST "http://localhost:3400/api/cardapio/Combo%20Sashimi/view" | jq .
+curl -s -X POST "http://localhost:3400/api/cardapio/Combo%20Sashimi/view" | jq .
 ```
-Execute várias vezes seguidas:
+Execute um loop rápido simulando múltiplos acessos concorrentes:
 ```bash
 for i in {1..5}; do curl -s -X POST "http://localhost:3400/api/cardapio/Combo%20Sashimi/view" | jq -c '{prato, total_visualizacoes}'; done
 ```
 
 #### Passo 4.2: Conferir no Redis Commander
-Vá em [http://localhost:8402](http://localhost:8402) e veja a chave `gastrohub:views:Combo Sashimi` com o valor numérico incrementado atomicamente a 100k+ ops/s sem sobrecarregar o banco relacional ou de documentos!
+Vá em [http://localhost:8402](http://localhost:8402) e veja a chave `gastrohub:views:Combo Sashimi` com o valor numérico incrementado atomicamente sem sobrecarregar o banco de dados!
 
 ---
 
-## 📌 Resumo Conceitual para a Turma
+## 📌 Resumo dos Conceitos Praticados
 
 | Conceito | O que significa na prática? | Onde vimos no código? |
 | :--- | :--- | :--- |
