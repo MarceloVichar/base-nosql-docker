@@ -56,6 +56,31 @@ export async function cacheDel(key: string): Promise<void> {
   await client.del(key);
 }
 
+/**
+ * Retorna o TTL (tempo de vida restante) de uma chave em segundos.
+ * Retorna -2 se a chave não existir, ou -1 se não tiver expiração configurada.
+ */
+export async function cacheTtl(key: string): Promise<number> {
+  const client = getRedisClient();
+  return client.ttl(key);
+}
+
+/**
+ * Incrementa atomicamente um valor numérico em memória (ideal para contadores, visualizações, rate limiting).
+ */
+export async function cacheIncr(key: string): Promise<number> {
+  const client = getRedisClient();
+  return client.incr(key);
+}
+
+/**
+ * Limpa chaves com base em um padrão ou remove todas as chaves (flushdb).
+ */
+export async function cacheFlush(): Promise<void> {
+  const client = getRedisClient();
+  await client.flushdb();
+}
+
 export async function closeRedis(): Promise<void> {
   if (redisClient) {
     await redisClient.quit();
