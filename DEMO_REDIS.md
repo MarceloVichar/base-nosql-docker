@@ -25,26 +25,41 @@ Se os containers ainda não estiverem rodando, suba a infraestrutura na raiz do 
 
 ## 🧪 2. Experimentos Práticos
 
-### Experimento 1: Latência — Cache Miss vs Cache Hit (35x a 50x mais rápido)
+### Experimento 1: Latência — Sem Cache vs Cache Miss vs Cache Hit
 
-O endpoint `/api/cardapio/economicos` possui medição precisa de latência via `performance.now()`.
+Para entender a diferença de implementação, disponibilizamos dois métodos no controller:
+* `listarEconomicosSemCache`: consulta direta no MongoDB (disco).
+* `listarEconomicos`: padrão Cache-Aside gerenciado pelo Redis (RAM).
 
-#### Passo 1.1: Primeira chamada (Cache Miss — vai ao MongoDB em disco)
+#### Passo 1.1: Consulta direta no MongoDB (Baseline sem cache)
 ```bash
-curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_resposta, ttl_restante_segundos, total_itens}'
+curl -s http://localhost:3400/api/cardapio/economicos-sem-cache | jq '{origem, tempo_resposta, total_itens}'
+```
+**Saída esperada:**
+```json
+{
+  "origem": "MONGODB (SEM CACHE)",
+  "tempo_resposta": "18.40 ms",
+  "total_itens": 11
+}
+```
+> **O que ocorreu:** O backend foi diretamente ao disco do MongoDB, executou a query de filtro e retornou. Toda requisição a essa rota repetirá esse custo de I/O.
+
+#### Passo 1.2: Primeira chamada no endpoint com Cache (Cache Miss)
+```bash
+curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_resposta, total_itens}'
 ```
 **Saída esperada:**
 ```json
 {
   "origem": "MONGODB (CACHE MISS)",
-  "tempo_resposta": "38.40 ms",
-  "ttl_restante_segundos": 60,
-  "total_itens": 4
+  "tempo_resposta": "16.80 ms",
+  "total_itens": 11
 }
 ```
-> **O que ocorreu:** O Redis não possuía a chave `gastrohub:cardapio:economicos`. O backend foi até o MongoDB, executou a query de filtro e ordenação no disco, salvou o JSON no Redis com TTL de 60 segundos e respondeu.
+> **O que ocorreu:** O Redis não possuía a chave `gastrohub:cardapio:economicos`. A aplicação buscou no MongoDB, salvou a resposta no Redis com TTL de 60 segundos e entregou o resultado.
 
-#### Passo 1.2: Segunda chamada imediata (Cache Hit — servido da RAM)
+#### Passo 1.3: Segunda chamada imediata (Cache Hit — Servido da Memória RAM)
 ```bash
 curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_resposta, ttl_restante_segundos, total_itens}'
 ```
@@ -54,16 +69,10 @@ curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_respo
   "origem": "REDIS (CACHE HIT)",
   "tempo_resposta": "0.95 ms",
   "ttl_restante_segundos": 58,
-  "total_itens": 4
+  "total_itens": 11
 }
 ```
-> **O que ocorreu:** O backend encontrou a chave na memória RAM do Redis e retornou instantaneamente em **menos de 1 milissegundo** — uma redução de latência de quase **40 vezes**!
-
-#### Passo 1.3: Forçando Bypass de Cache para comparação
-```bash
-curl -s "http://localhost:3400/api/cardapio/economicos?cache=false" | jq '{origem, tempo_resposta}'
-```
-> **Observação técnica:** Ao informar `?cache=false`, a aplicação ignora propositalmente a memória e busca os dados no MongoDB em disco, evidenciando o custo contínuo de I/O.
+> **O que ocorreu:** O backend encontrou o resultado na memória RAM do Redis e respondeu em **menos de 1 milissegundo** — uma queda drástica de latência sem onerar o banco de dados.
 
 ---
 
@@ -79,16 +88,20 @@ curl -s "http://localhost:3400/api/cardapio/economicos?cache=false" | jq '{orige
 
 ### Experimento 3: O Perigo do Dado Obsoleto (*Stale Data*) e Invalidação Ativa
 
+No controller, separamos também a mutação em dois métodos para fins didáticos:
+* `PATCH /api/cardapio/:nome/preco-sem-cache` (`atualizarPrecoSemInvalidar`): atualiza o MongoDB mas esquece de limpar o Redis.
+* `PATCH /api/cardapio/:nome/preco` (`atualizarPreco`): atualiza o MongoDB e chama `cacheDel` imediatamente.
+
 #### Passo 3.1: Garantir que o cardápio está em cache na memória
-Faça uma chamada inicial para carregar o cardápio no Redis (preço oficial de semente do **Prato Feito**: R$ 24.90):
+Faça uma chamada inicial para carregar o cardápio no Redis (preço de semente do **Prato Feito**: R$ 24.90):
 ```bash
 curl -s http://localhost:3400/api/cardapio/economicos > /dev/null
 ```
 
-#### Passo 3.2: Atualizar o preço no MongoDB SEM invalidar o cache
-Simulamos o caso em que o preço do prato sobe para **R$ 34.90** no banco de dados, mas o cache não é avisado (`invalida_cache=false`):
+#### Passo 3.2: Atualizar o preço pela rota que NÃO invalida o cache
+Simulamos o caso em que o preço do prato sobe para **R$ 34.90** no banco de dados, mas o desenvolvedor esqueceu de invalidar a memória:
 ```bash
-curl -s -X PATCH "http://localhost:3400/api/cardapio/Prato%20Feito/preco?invalida_cache=false" \
+curl -s -X PATCH "http://localhost:3400/api/cardapio/Prato%20Feito/preco-sem-cache" \
   -H "Content-Type: application/json" \
   -d '{"preco": 34.90}' | jq '{mensagem, novo_preco, cache_invalidado, aviso}'
 ```
@@ -100,7 +113,7 @@ curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, prato: (.da
 > **Perceba o problema:** O preço retornado continua sendo **R$ 24.90** com origem `REDIS (CACHE HIT)`!  
 > O MongoDB já está atualizado com R$ 34.90, mas a aplicação continua entregando o dado velho que estava na memória RAM. Isso é **Stale Data** (dado obsoleto).
 
-#### Passo 3.4: Executando a Invalidação Ativa do Cache
+#### Passo 3.4: Executando a Invalidação Ativa Manual
 Para corrigir a inconsistência, acionamos o endpoint que remove a chave defasada do Redis:
 ```bash
 curl -s -X DELETE http://localhost:3400/api/cardapio/cache | jq .
@@ -112,13 +125,14 @@ curl -s http://localhost:3400/api/cardapio/economicos | jq '{origem, tempo_respo
 ```
 > **Resultado:** Ocorre um novo `MONGODB (CACHE MISS)`. A aplicação busca o dado fresco diretamente do MongoDB em disco, entrega o novo preço de **R$ 34.90** e repovoa o Redis!
 
-#### Passo 3.6: Restaurar o preço original (Boa Prática de Limpeza)
-Restaure o valor original de semente de R$ 24.90 com invalidação automática:
+#### Passo 3.6: Atualizar com a rota de Boa Prática (Invalidação Ativa Automática)
+Agora usamos o endpoint definitivo `PATCH /api/cardapio/:nome/preco` para restaurar o preço original de R$ 24.90. Observe que ele já remove a chave do Redis sozinho com `cacheDel`:
 ```bash
 curl -s -X PATCH "http://localhost:3400/api/cardapio/Prato%20Feito/preco" \
   -H "Content-Type: application/json" \
-  -d '{"preco": 24.90}' | jq '{mensagem, novo_preco}'
+  -d '{"preco": 24.90}' | jq '{mensagem, novo_preco, cache_invalidado, aviso}'
 ```
+Se consultar novamente `/api/cardapio/economicos`, verá que o dado já vem atualizado sem precisar de DELETE manual!
 
 ---
 

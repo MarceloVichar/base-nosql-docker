@@ -22,38 +22,13 @@ export class CardapioController {
   }
 
   /**
-   * 2. PRATOS ECONÔMICOS COM CACHE-ASIDE & TELEMETRIA DE LATÊNCIA (Módulo 05)
-   * GET /api/cardapio/economicos
-   * Suporta ?cache=false para forçar leitura direta no MongoDB (disco)
+   * 2A. PRATOS ECONÔMICOS — SEM CACHE (Baseline MongoDB)
+   * GET /api/cardapio/economicos-sem-cache
+   * Consulta direta no MongoDB (disco) para demonstrar a latência sem cache
    */
-  static async listarEconomicos(req: Request, res: Response): Promise<void> {
+  static async listarEconomicosSemCache(req: Request, res: Response): Promise<void> {
     const t0 = performance.now();
-    const usarCache = req.query.cache !== "false";
-
     try {
-      // ── PASSO 1: TENTAR BUSCAR NO CACHE (REDIS) ──────────────────────────
-      if (usarCache) {
-        const cached = await cacheGet<any[]>(CHAVE_CACHE_ECONOMICOS);
-
-        if (cached) {
-          const elapsedMs = (performance.now() - t0).toFixed(2);
-          const ttlRestante = await cacheTtl(CHAVE_CACHE_ECONOMICOS);
-
-          res.json({
-            origem: "REDIS (CACHE HIT)",
-            tempo_resposta: `${elapsedMs} ms`,
-            tempo_ms: Number(elapsedMs),
-            ttl_restante_segundos: ttlRestante,
-            total_itens: cached.length,
-            chave_cache: CHAVE_CACHE_ECONOMICOS,
-            explicacao: "Dado recuperado instantaneamente da memória RAM via Redis!",
-            dados: cached,
-          });
-          return;
-        }
-      }
-
-      // ── PASSO 2: CACHE MISS (OU ?cache=false) -> BUSCAR NO MONGODB ──────
       const col = getCollection("cardapio");
       const pratos = await col
         .find({
@@ -63,23 +38,76 @@ export class CardapioController {
         .sort({ preco: 1 })
         .toArray();
 
-      // ── PASSO 3: POPULAR O CACHE NO REDIS COM TTL ────────────────────────
-      if (usarCache) {
-        await cacheSet(CHAVE_CACHE_ECONOMICOS, pratos, TTL_CACHE_SEGUNDOS);
+      const elapsedMs = (performance.now() - t0).toFixed(2);
+
+      res.json({
+        origem: "MONGODB (SEM CACHE)",
+        tempo_resposta: `${elapsedMs} ms`,
+        tempo_ms: Number(elapsedMs),
+        total_itens: pratos.length,
+        explicacao: "Consulta executada diretamente no MongoDB (leitura em disco SSD/HD).",
+        dados: pratos,
+      });
+    } catch (err: any) {
+      res.status(500).json({ erro: err.message });
+    }
+  }
+
+  /**
+   * 2B. PRATOS ECONÔMICOS — COM CACHE-ASIDE (Módulo 05)
+   * GET /api/cardapio/economicos
+   * Padrão canônico Cache-Aside:
+   * 1. Pergunta ao Redis (RAM). Se tiver (HIT), retorna instantaneamente (< 1ms).
+   * 2. Se não tiver (MISS), busca no MongoDB (disco).
+   * 3. Salva no Redis com TTL de 60s para atender as próximas requisições.
+   */
+  static async listarEconomicos(req: Request, res: Response): Promise<void> {
+    const t0 = performance.now();
+
+    try {
+      // ── PASSO 1: TENTAR BUSCAR NO CACHE (REDIS) ──────────────────────────
+      const cached = await cacheGet<any[]>(CHAVE_CACHE_ECONOMICOS);
+
+      if (cached) {
+        const elapsedMs = (performance.now() - t0).toFixed(2);
+        const ttlRestante = await cacheTtl(CHAVE_CACHE_ECONOMICOS);
+
+        res.json({
+          origem: "REDIS (CACHE HIT)",
+          tempo_resposta: `${elapsedMs} ms`,
+          tempo_ms: Number(elapsedMs),
+          ttl_restante_segundos: ttlRestante,
+          total_itens: cached.length,
+          chave_cache: CHAVE_CACHE_ECONOMICOS,
+          explicacao: "Dado recuperado instantaneamente da memória RAM via Redis!",
+          dados: cached,
+        });
+        return;
       }
+
+      // ── PASSO 2: CACHE MISS -> BUSCAR NO MONGODB ─────────────────────────
+      const col = getCollection("cardapio");
+      const pratos = await col
+        .find({
+          preco: { $lte: 40.0 },
+          disponivel: true,
+        })
+        .sort({ preco: 1 })
+        .toArray();
+
+      // ── PASSO 3: POPULAR O CACHE NO REDIS COM TTL DE 60s ─────────────────
+      await cacheSet(CHAVE_CACHE_ECONOMICOS, pratos, TTL_CACHE_SEGUNDOS);
 
       const elapsedMs = (performance.now() - t0).toFixed(2);
 
       res.json({
-        origem: usarCache ? "MONGODB (CACHE MISS)" : "MONGODB (CACHE BYPASS)",
+        origem: "MONGODB (CACHE MISS)",
         tempo_resposta: `${elapsedMs} ms`,
         tempo_ms: Number(elapsedMs),
-        ttl_configurado_segundos: usarCache ? TTL_CACHE_SEGUNDOS : null,
+        ttl_configurado_segundos: TTL_CACHE_SEGUNDOS,
         total_itens: pratos.length,
-        chave_cache: usarCache ? CHAVE_CACHE_ECONOMICOS : null,
-        explicacao: usarCache
-          ? "Consulta executada no MongoDB em disco. Resultado salvo no Redis por 60s."
-          : "Consulta forçada diretamente no MongoDB via ?cache=false.",
+        chave_cache: CHAVE_CACHE_ECONOMICOS,
+        explicacao: "Consulta executada no MongoDB em disco. Resultado salvo no Redis por 60s.",
         dados: pratos,
       });
     } catch (err: any) {
@@ -106,15 +134,14 @@ export class CardapioController {
   }
 
   /**
-   * 4. ATUALIZAR PREÇO DO PRATO & DEMONSTRAÇÃO DE STALE DATA (Módulo 05)
-   * PATCH /api/cardapio/:nome/preco
-   * Parâmetro opcional: ?invalida_cache=false para forçar visualização de dado obsoleto
+   * 4A. ATUALIZAR PREÇO SEM INVALIDAR CACHE (Demonstração de Stale Data)
+   * PATCH /api/cardapio/:nome/preco-sem-cache
+   * Atualiza apenas o MongoDB. Como o Redis NÃO é limpo, o cache servirá dado desatualizado.
    */
-  static async atualizarPreco(req: Request, res: Response): Promise<void> {
+  static async atualizarPrecoSemInvalidar(req: Request, res: Response): Promise<void> {
     try {
       const { nome } = req.params;
       const { preco } = req.body;
-      const deveInvalidar = req.query.invalida_cache !== "false";
 
       if (!preco) {
         res.status(400).json({ erro: "Campo 'preco' é obrigatório no corpo da requisição." });
@@ -132,18 +159,51 @@ export class CardapioController {
         return;
       }
 
-      // Se configurado para invalidar, remove a chave do Redis
-      if (deveInvalidar) {
-        await cacheDel(CHAVE_CACHE_ECONOMICOS);
+      res.json({
+        mensagem: `Preço do prato '${nome}' atualizado no MongoDB!`,
+        novo_preco: Number(preco),
+        cache_invalidado: false,
+        aviso: "ALERTA: O cache NÃO foi invalidado! A consulta continuará servindo o preço ANTIGO até o TTL expirar (Stale Data).",
+      });
+    } catch (err: any) {
+      res.status(500).json({ erro: err.message });
+    }
+  }
+
+  /**
+   * 4B. ATUALIZAR PREÇO COM INVALIDAÇÃO ATIVA (Boa Prática de Engenharia)
+   * PATCH /api/cardapio/:nome/preco
+   * Atualiza o MongoDB e IMEDIATAMENTE remove a chave do Redis com cacheDel.
+   */
+  static async atualizarPreco(req: Request, res: Response): Promise<void> {
+    try {
+      const { nome } = req.params;
+      const { preco } = req.body;
+
+      if (!preco) {
+        res.status(400).json({ erro: "Campo 'preco' é obrigatório no corpo da requisição." });
+        return;
       }
+
+      const col = getCollection("cardapio");
+      const resultado = await col.updateOne(
+        { nome },
+        { $set: { preco: Number(preco) } }
+      );
+
+      if (resultado.matchedCount === 0) {
+        res.status(404).json({ erro: `Prato '${nome}' não encontrado.` });
+        return;
+      }
+
+      // Invalidação ativa: remove a chave defasada do Redis
+      await cacheDel(CHAVE_CACHE_ECONOMICOS);
 
       res.json({
         mensagem: `Preço do prato '${nome}' atualizado com sucesso no MongoDB!`,
         novo_preco: Number(preco),
-        cache_invalidado: deveInvalidar,
-        aviso: deveInvalidar
-          ? "O cache do Redis foi invalidado. A próxima consulta trará o novo preço imediatamente."
-          : "ALERTA: O cache NÃO foi invalidado! A consulta continuará servindo o preço ANTIGO até o TTL expirar (Stale Data).",
+        cache_invalidado: true,
+        aviso: "O cache do Redis foi invalidado com cacheDel. A próxima consulta trará o novo preço imediatamente.",
       });
     } catch (err: any) {
       res.status(500).json({ erro: err.message });
