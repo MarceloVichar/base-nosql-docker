@@ -81,6 +81,101 @@ export async function cacheFlush(): Promise<void> {
   await client.flushdb();
 }
 
+/* ==========================================================================
+   ESTRUTURAS AVANÇADAS DO REDIS (MÓDULO 06)
+   ========================================================================== */
+
+// ── 1. HASHES (Objetos estruturados em memória) ───────────────────────────
+export async function hashSet(key: string, data: Record<string, string | number>): Promise<number> {
+  const client = getRedisClient();
+  return client.hset(key, data);
+}
+
+export async function hashGet(key: string, field: string): Promise<string | null> {
+  const client = getRedisClient();
+  return client.hget(key, field);
+}
+
+export async function hashGetAll(key: string): Promise<Record<string, string>> {
+  const client = getRedisClient();
+  return client.hgetall(key);
+}
+
+export async function hashIncr(key: string, field: string, increment = 1): Promise<number> {
+  const client = getRedisClient();
+  return client.hincrby(key, field, increment);
+}
+
+// ── 2. LISTS (Filas FIFO e pilhas em memória) ─────────────────────────────
+export async function listPush(key: string, value: string, direction: "left" | "right" = "right"): Promise<number> {
+  const client = getRedisClient();
+  return direction === "right" ? client.rpush(key, value) : client.lpush(key, value);
+}
+
+export async function listPop(key: string, direction: "left" | "right" = "left"): Promise<string | null> {
+  const client = getRedisClient();
+  return direction === "left" ? client.lpop(key) : client.rpop(key);
+}
+
+export async function listRange(key: string, start = 0, stop = -1): Promise<string[]> {
+  const client = getRedisClient();
+  return client.lrange(key, start, stop);
+}
+
+export async function listLen(key: string): Promise<number> {
+  const client = getRedisClient();
+  return client.llen(key);
+}
+
+// ── 3. SETS (Conjuntos de elementos únicos não ordenados) ─────────────────
+export async function setAdd(key: string, ...members: string[]): Promise<number> {
+  const client = getRedisClient();
+  return client.sadd(key, ...members);
+}
+
+export async function setMembers(key: string): Promise<string[]> {
+  const client = getRedisClient();
+  return client.smembers(key);
+}
+
+export async function setIsMember(key: string, member: string): Promise<boolean> {
+  const client = getRedisClient();
+  const res = await client.sismember(key, member);
+  return res === 1;
+}
+
+export async function setRem(key: string, ...members: string[]): Promise<number> {
+  const client = getRedisClient();
+  return client.srem(key, ...members);
+}
+
+// ── 4. SORTED SETS (Conjuntos ordenados por pontuação / score) ────────────
+export async function zsetAdd(key: string, score: number, member: string): Promise<number> {
+  const client = getRedisClient();
+  return client.zadd(key, score, member);
+}
+
+export async function zsetIncr(key: string, member: string, increment = 1): Promise<string> {
+  const client = getRedisClient();
+  return client.zincrby(key, increment, member);
+}
+
+export async function zsetRevRangeWithScores(key: string, start = 0, stop = 9): Promise<Array<{ member: string; score: number }>> {
+  const client = getRedisClient();
+  const raw = await client.zrevrange(key, start, stop, "WITHSCORES");
+  const result: Array<{ member: string; score: number }> = [];
+  for (let i = 0; i < raw.length; i += 2) {
+    result.push({ member: raw[i], score: parseFloat(raw[i + 1]) });
+  }
+  return result;
+}
+
+export async function zsetScore(key: string, member: string): Promise<number | null> {
+  const client = getRedisClient();
+  const score = await client.zscore(key, member);
+  return score !== null ? parseFloat(score) : null;
+}
+
 export async function closeRedis(): Promise<void> {
   if (redisClient) {
     await redisClient.quit();
