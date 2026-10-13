@@ -4,6 +4,7 @@ import restaurantesRoutes from "./restaurantes.routes.js";
 import cardapioRoutes from "./cardapio.routes.js";
 import pedidosRoutes from "./pedidos.routes.js";
 import estruturasRedisRoutes from "./estruturas-redis.routes.js";
+import buscaRoutes from "./busca.routes.js";
 import { getDb } from "../database/mongo.js";
 import { getRedisClient } from "../database/redis.js";
 import { getElasticClient } from "../database/elastic.js";
@@ -62,6 +63,9 @@ routes.use("/pedidos", pedidosRoutes);
 
 // Rotas do Módulo 06 — Estruturas de Dados do Redis
 routes.use("/redis", estruturasRedisRoutes);
+
+// Rotas do Módulo 07 — Busca Textual com ElasticSearch
+routes.use("/busca", buscaRoutes);
 
 export default routes;
 

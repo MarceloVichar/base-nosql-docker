@@ -1,40 +1,39 @@
 {
   "settings": {
     "number_of_shards": 1,
-    "number_of_replicas": 0
+    "number_of_replicas": 0,
+    "analysis": {
+      "filter": {
+        "sem_palavras_vazias": {
+          "type": "stop",
+          "stopwords": "_portuguese_"
+        },
+        "sem_plural": {
+          "type": "stemmer",
+          "language": "minimal_portuguese"
+        }
+      },
+      "analyzer": {
+        "texto_ptbr": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "sem_palavras_vazias", "sem_plural", "asciifolding"]
+        }
+      }
+    }
   },
   "mappings": {
     "properties": {
-      "prato_id": {
-        "type": "keyword"
-      },
-      "restaurante_id": {
-        "type": "keyword"
-      },
-      "restaurante_nome": {
-        "type": "text"
-      },
-      "nome": {
-        "type": "text"
-      },
-      "descricao": {
-        "type": "text"
-      },
-      "categoria": {
-        "type": "keyword"
-      },
-      "preco": {
-        "type": "float"
-      },
-      "ingredientes": {
-        "type": "text"
-      },
-      "alergenos": {
-        "type": "keyword"
-      },
-      "disponivel": {
-        "type": "boolean"
-      }
+      "prato_id": { "type": "keyword" },
+      "restaurante_id": { "type": "keyword" },
+      "restaurante_nome": { "type": "text", "analyzer": "texto_ptbr" },
+      "nome": { "type": "text", "analyzer": "texto_ptbr" },
+      "descricao": { "type": "text", "analyzer": "texto_ptbr" },
+      "ingredientes": { "type": "text", "analyzer": "texto_ptbr" },
+      "categoria": { "type": "keyword" },
+      "alergenos": { "type": "keyword" },
+      "preco": { "type": "float" },
+      "disponivel": { "type": "boolean" }
     }
   }
 }

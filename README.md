@@ -145,6 +145,18 @@ init/
 
 ---
 
+## 🔎 Busca Textual (Módulo 07)
+
+O índice `pratos` do ElasticSearch é criado pelo `./iniciar.sh` a partir do cardápio do MongoDB, usando o mapping de `init/elastic-init.json`.
+
+- **Roteiro de demonstração:** [`DEMO_ELASTICSEARCH.md`](DEMO_ELASTICSEARCH.md)
+- **Buscar:** `curl 'http://localhost:3400/api/busca?q=piza calabreza'`
+- **Recriar o índice:** `curl -X POST http://localhost:3400/api/busca/reindexar`
+
+> **Fez o fork antes do Módulo 07?** O `init/elastic-init.json` antigo usava o parâmetro `boost` no mapping, que o ElasticSearch 8 rejeita. Veja a seção 0 do `DEMO_ELASTICSEARCH.md`.
+
+---
+
 ## 🛠️ Comandos de Manutenção
 
 - **Ver logs da aplicação em tempo real:**

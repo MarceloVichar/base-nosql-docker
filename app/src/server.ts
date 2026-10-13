@@ -24,6 +24,7 @@ app.get("/", (req: Request, res: Response) => {
     endpoints: {
       health: "GET /api/health",
       itens_simples: "GET /api/itens",
+      busca: "GET /api/busca?q=texto",
     },
     interfaces_web: {
       elasticvue: "http://localhost:8400",
