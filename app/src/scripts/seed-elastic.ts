@@ -21,6 +21,25 @@ function getElasticInitConfig() {
   throw new Error("Arquivo init/elastic-init.json não encontrado.");
 }
 
+/**
+ * Monta o documento do índice "pratos" a partir de um prato do MongoDB.
+ * Usado pela carga completa (abaixo) e pela sincronização de um único prato (Módulo 08).
+ */
+export function montarDocumentoBusca(prato: any, restauranteNome: string) {
+  return {
+    prato_id: prato._id.toString(),
+    restaurante_id: prato.restaurante_id ? prato.restaurante_id.toString() : null,
+    restaurante_nome: restauranteNome,
+    nome: prato.nome,
+    descricao: prato.descricao,
+    categoria: prato.categoria,
+    preco: prato.preco,
+    ingredientes: Array.isArray(prato.ingredientes) ? prato.ingredientes.join(", ") : prato.ingredientes,
+    alergenos: prato.alergenos || [],
+    disponivel: prato.disponivel !== false,
+  };
+}
+
 export async function seedElasticsearch(keepConnectionsOpen = false) {
   console.log("[Elasticsearch] Verificando/sincronizando índice 'pratos' a partir de init/elastic-init.json...");
 
@@ -64,18 +83,7 @@ export async function seedElasticsearch(keepConnectionsOpen = false) {
     await elastic.index({
       index: indexName,
       id: prato._id.toString(),
-      document: {
-        prato_id: prato._id.toString(),
-        restaurante_id: prato.restaurante_id ? prato.restaurante_id.toString() : null,
-        restaurante_nome: restNome,
-        nome: prato.nome,
-        descricao: prato.descricao,
-        categoria: prato.categoria,
-        preco: prato.preco,
-        ingredientes: Array.isArray(prato.ingredientes) ? prato.ingredientes.join(", ") : prato.ingredientes,
-        alergenos: prato.alergenos || [],
-        disponivel: prato.disponivel !== false,
-      },
+      document: montarDocumentoBusca(prato, restNome),
     });
     count++;
   }

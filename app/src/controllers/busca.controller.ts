@@ -27,6 +27,7 @@ function resumir(hits: any[]) {
  * 4. Busca completa: vários campos, pesos e tolerância a erro de digitação
  * 5. Busca com filtros (Checkpoint 3 da aula)
  * 6. Reindexação: copia o cardápio do MongoDB para o ElasticSearch
+ * 7. Busca do aplicativo: texto, tolerância e filtros na mesma consulta (Módulo 08)
  */
 export class BuscaController {
   /* ========================================================================
@@ -206,6 +207,50 @@ export class BuscaController {
         recebidos_do_elastic: resposta.hits.hits.length,
         total: filtrados.length,
         resultados: resumir(filtrados),
+      });
+    } catch (err: any) {
+      res.status(500).json({ erro: err.message });
+    }
+  }
+
+  /* ========================================================================
+     7. BUSCA DO APLICATIVO — texto, tolerância e filtros na mesma consulta
+     ======================================================================== */
+
+  /**
+   * Busca usada pela tela do aplicativo: só pratos disponíveis e, se
+   * informada, apenas de uma categoria.
+   * GET /api/busca/cardapio?q=piza&categoria=Pizzas
+   */
+  static async buscarNoCardapio(req: Request, res: Response): Promise<void> {
+    try {
+      const termo = String(req.query.q || "").trim();
+      const categoria = String(req.query.categoria || "").trim();
+      if (!termo) {
+        res.status(400).json({ erro: "Informe o texto da busca em ?q=" });
+        return;
+      }
+
+      const filtros: any[] = [{ term: { disponivel: true } }];
+      if (categoria) filtros.push({ term: { categoria } });
+
+      const elastic = getElasticClient();
+      const resposta = await elastic.search({
+        index: INDICE,
+        query: {
+          bool: {
+            must: { multi_match: { query: termo, fields: CAMPOS_BUSCA, fuzziness: "AUTO" } },
+            filter: filtros,
+          },
+        },
+      });
+
+      res.json({
+        origem: "ELASTICSEARCH (multi_match com filtros)",
+        termo,
+        categoria: categoria || null,
+        total: resposta.hits.hits.length,
+        resultados: resumir(resposta.hits.hits),
       });
     } catch (err: any) {
       res.status(500).json({ erro: err.message });

@@ -15,6 +15,9 @@ router.get("/simples", BuscaController.buscaSimples);
 /* ── 5. Busca com filtros (Checkpoint 3: versão a otimizar) ── */
 router.get("/filtrada", BuscaController.buscarComFiltros);
 
+/* ── 7. Busca do aplicativo: texto, tolerância e filtros (Módulo 08) ── */
+router.get("/cardapio", BuscaController.buscarNoCardapio);
+
 /* ── 6. Reindexação: MongoDB -> ElasticSearch ── */
 router.post("/reindexar", BuscaController.reindexar);
 

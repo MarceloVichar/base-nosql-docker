@@ -157,6 +157,17 @@ O índice `pratos` do ElasticSearch é criado pelo `./iniciar.sh` a partir do ca
 
 ---
 
+## 🔄 Integração entre Bancos e Sincronização (Módulo 08)
+
+O cardápio tem o MongoDB como fonte da verdade, uma cópia com TTL no Redis e uma cópia no índice `pratos` do ElasticSearch. A rota de alteração mantém as três coerentes.
+
+- **Roteiro de demonstração:** [`DEMO_SINCRONIZACAO.md`](DEMO_SINCRONIZACAO.md)
+- **Comparar as cópias:** `curl 'http://localhost:3400/api/pratos/Prato%20Feito/comparar'`
+- **Alterar com sincronização:** `curl -X PATCH 'http://localhost:3400/api/pratos/Prato%20Feito' -H 'Content-Type: application/json' -d '{"preco": 26.9}'`
+- **Modelo do Checkpoint 2:** [`CHECKPOINT_2_MODELO.md`](CHECKPOINT_2_MODELO.md)
+
+---
+
 ## 🛠️ Comandos de Manutenção
 
 - **Ver logs da aplicação em tempo real:**
