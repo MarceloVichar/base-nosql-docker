@@ -46,7 +46,7 @@ O peso de cada campo não se perdeu: ele passou a ser informado **na consulta** 
 **Opção A — trazer a correção do repositório base (recomendado):**
 
 ```bash
-git remote add base git@github.com:MarceloVichar/base-nosql-docker.git   # apenas na primeira vez
+git remote add base https://github.com/MarceloVichar/base-nosql-docker.git   # apenas na primeira vez
 git fetch base
 git checkout base/modulo-07 -- app/src/scripts/seed-elastic.ts iniciar.sh
 ```
@@ -215,16 +215,26 @@ Ao salvar o arquivo, a API reinicia sozinha. Rode o `curl` de novo: `recebidos_d
 O MongoDB continua sendo a **fonte da verdade**. O índice `pratos` é uma cópia montada para buscar.
 
 ```bash
-# 1. Altere o nome de um prato apenas no MongoDB (pelo Mongo Express, em localhost:8401)
-# 2. Busque pelo nome novo: o ElasticSearch ainda não o conhece
-curl -s "http://localhost:3400/api/busca?q=NOVO_NOME" | jq .
+# 1. Altere o nome de um prato apenas no MongoDB
+docker exec nosql_mongo mongosh -u root -p root --quiet --eval \
+  'db.getSiblingDB("gastrohub").cardapio.updateOne({ nome: "Batata Frita G" }, { $set: { nome: "Mandioca Frita G" } })'
 
-# 3. Reindexe e busque de novo
+# 2. Busque pelo nome novo: o ElasticSearch ainda não o conhece (total: 0)
+curl -s "http://localhost:3400/api/busca?q=mandioca" | jq .
+
+# 3. Reindexe e busque de novo: agora aparece "Mandioca Frita G"
 curl -s -X POST http://localhost:3400/api/busca/reindexar | jq .
-curl -s "http://localhost:3400/api/busca?q=NOVO_NOME" | jq .
+curl -s "http://localhost:3400/api/busca?q=mandioca" | jq .
+
+# 4. Desfaça a alteração e reindexe
+docker exec nosql_mongo mongosh -u root -p root --quiet --eval \
+  'db.getSiblingDB("gastrohub").cardapio.updateOne({ nome: "Mandioca Frita G" }, { $set: { nome: "Batata Frita G" } })'
+curl -s -X POST http://localhost:3400/api/busca/reindexar | jq .
 ```
 
-> **O que observar:** entre a alteração e a reindexação, a busca devolve o dado antigo. Manter os dois bancos em sincronia é o assunto do Módulo 08.
+A mesma alteração pode ser feita pelo Mongo Express, em `http://localhost:8401`.
+
+> **O que observar:** entre a alteração e a reindexação, a busca devolve o dado antigo. Manter os dois bancos em sincronia é o assunto do Módulo 08. Repare também que, depois de renomeado, o prato continua aparecendo na busca por `batata`: a palavra ainda está na descrição.
 
 ---
 
