@@ -58,8 +58,48 @@ Para evitar conflitos com outros programas locais do Ubuntu, utilizamos portas d
 ## 📡 Endpoints Prontos para Testar
 
 - **Health Check dos 3 Bancos:** [http://localhost:3400/api/health](http://localhost:3400/api/health)
-- **Simple Collection (GET /api/itens):** [http://localhost:3400/api/itens](http://localhost:3400/api/itens)
-  - *Dica:* Na 1ª requisição, você verá `origem: "MONGODB (Salvo no Redis por 60s)"`. Na 2ª requisição, você verá `origem: "REDIS_CACHE (< 2ms)"`!
+- **Mapa da API:** [http://localhost:3400/](http://localhost:3400/)
+
+### 🔎 Busca textual (ElasticSearch)
+
+| Rota | Descrição |
+| :--- | :--- |
+| `GET /api/produtos?q=&categoria=&vendedor_id=&preco_max=` | Busca `multi_match` com pesos, tolerante a erro de digitação, com filtros exatos |
+| `GET /api/busca/analisar?texto=` | Mostra os termos gerados pelo analisador `texto_ptbr` |
+| `POST /api/busca/reindexar` | Recria o índice inteiro a partir do MongoDB |
+
+### ⚡ Leituras com cache-aside (Redis)
+
+| Rota | Chave | TTL |
+| :--- | :--- | ---: |
+| `GET /api/produtos/recentes` | `popsmarket:produtos:recentes` | 120 s |
+| `GET /api/produtos/categoria/:categoria` | `popsmarket:produtos:categoria:<cat>` | 300 s |
+| `GET /api/produtos/detalhes/:id` | `popsmarket:produto:<id>` | 600 s |
+| `GET /api/vendedor/:vendedor_id/produtos` | `popsmarket:vendedor:<id>:produtos` | 300 s |
+
+*Dica:* na 1ª requisição você verá `origem: "MONGODB (CACHE MISS)"`; na 2ª, `origem: "REDIS (CACHE HIT)"` com um tempo de resposta cerca de 10x menor.
+
+### 🧱 Estruturas de dados do Redis
+
+| Rota | Estrutura | Comandos |
+| :--- | :--- | :--- |
+| `POST\|GET /api/redis/carrinho/:cliente_id` | Hash | `HSET`, `HGETALL`, `HINCRBY` |
+| `POST /api/redis/ranking/venda` · `GET /api/redis/ranking/top` | Sorted Set | `ZINCRBY`, `ZREVRANGE ... WITHSCORES` |
+| `GET /api/redis/categorias` · `/categorias/verificar?categoria=` | Set | `SADD`, `SMEMBERS`, `SISMEMBER` |
+| `GET /api/redis/sync/pendentes` | List | `LRANGE`, `LLEN` |
+
+### ✍️ Escrita sincronizada (MongoDB → Redis → ElasticSearch)
+
+| Rota | Descrição |
+| :--- | :--- |
+| `POST /api/produtos` | Cadastra, invalida o cache e indexa o produto |
+| `PUT /api/produtos/:id` | Substitui o produto por inteiro |
+| `PATCH /api/produtos/:id` | Altera campos (aceita `?simular_falha=elastic`) |
+| `DELETE /api/produtos/:id` | Remove do MongoDB e do índice |
+| `GET /api/produtos/sincronizacao/pendentes` | Fila de produtos que não chegaram ao índice |
+| `POST /api/produtos/sincronizacao/reprocessar` | Drena a fila relendo o MongoDB |
+
+> A documentação completa da arquitetura está em [`CHECKPOINT_2.md`](CHECKPOINT_2.md).
 
 ---
 

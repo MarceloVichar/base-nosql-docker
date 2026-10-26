@@ -3,8 +3,15 @@ import path from "path";
 import { connectMongo, getCollection, closeMongo } from "../database/mongo.js";
 import { connectElastic, getElasticClient, closeElastic } from "../database/elastic.js";
 
+/** Nome do índice de busca do PopsMarket. */
+export const INDICE = "produtos";
+
+/**
+ * Lê o mapping declarativo em init/elastic-init.json.
+ * O arquivo é montado em /app/init dentro do container (ver docker-compose.yaml),
+ * mas o script também roda fora do Docker — daí os três caminhos possíveis.
+ */
 function getElasticInitConfig() {
-  // Procura o arquivo init/elastic-init.json
   const possiblePaths = [
     path.resolve(process.cwd(), "init", "elastic-init.json"),
     path.resolve(process.cwd(), "..", "init", "elastic-init.json"),
@@ -13,100 +20,122 @@ function getElasticInitConfig() {
 
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
-      const raw = fs.readFileSync(p, "utf-8");
-      return JSON.parse(raw);
+      return JSON.parse(fs.readFileSync(p, "utf-8"));
     }
   }
 
-  // Fallback padrão se não encontrar o arquivo
+  throw new Error(
+    "Arquivo init/elastic-init.json não encontrado. O índice de busca não pode ser criado sem o mapping declarativo."
+  );
+}
+
+/**
+ * Converte um documento da coleção `produtos` (MongoDB) no documento do índice.
+ *
+ * É usada tanto pela carga completa quanto pelas rotas de escrita sincronizada,
+ * para que um produto indexado item a item fique idêntico a um produto vindo do
+ * seed. O `_id` do ElasticSearch é sempre o `_id` do MongoDB em string: é isso
+ * que permite atualizar um único documento do índice depois de um PATCH.
+ */
+export function montarDocumentoBusca(produto: any, vendedorNome: string) {
   return {
-    settings: { number_of_shards: 1, number_of_replicas: 0 },
-    mappings: {
-      properties: {
-        prato_id: { type: "keyword" },
-        restaurante_id: { type: "keyword" },
-        restaurante_nome: { type: "text" },
-        nome: { type: "text", boost: 3 },
-        descricao: { type: "text", boost: 2 },
-        categoria: { type: "keyword" },
-        preco: { type: "float" },
-        ingredientes: { type: "text" },
-        alergenos: { type: "keyword" },
-        disponivel: { type: "boolean" },
-      },
-    },
+    produto_id: produto._id.toString(),
+    vendedor_id: produto.vendedor_id ? produto.vendedor_id.toString() : null,
+    vendedor_nome: vendedorNome,
+    nome: produto.nome,
+    descricao: produto.descricao,
+    // As especificações variam de produto para produto (processador, material,
+    // numeração...). Achatar os valores num único campo de texto permite que a
+    // busca encontre "i5" ou "AMOLED" sem precisar de um mapping por atributo.
+    especificacoes_texto: Object.values(produto.especificacoes ?? {}).join(" "),
+    categorias: produto.categorias ?? [],
+    preco: produto.preco,
+    estoque: produto.estoque ?? 0,
+    avaliacao_media: produto.avaliacao?.media ?? 0,
+    disponivel: produto.disponivel !== false,
+    data_criacao: produto.data_criacao ?? null,
   };
 }
 
-export async function seedElasticsearch(keepConnectionsOpen = false) {
-  console.log("[Elasticsearch] Verificando/sincronizando índice 'pratos' a partir de init/elastic-init.json...");
+/**
+ * Carga completa: recria o índice a partir do mapping declarativo e o popula
+ * com todos os produtos do MongoDB (a fonte da verdade).
+ *
+ * @param keepConnectionsOpen true quando chamada de dentro de uma requisição HTTP
+ *                            (rota POST /api/busca/reindexar), para não derrubar
+ *                            as conexões usadas pelo resto da aplicação.
+ * @returns a quantidade de produtos indexados.
+ */
+export async function seedElasticsearch(keepConnectionsOpen = false): Promise<number> {
+  console.log(`[Elasticsearch] Sincronizando o índice '${INDICE}' a partir de init/elastic-init.json...`);
 
   await connectMongo();
   await connectElastic();
 
   const elastic = getElasticClient();
-  const indexName = "pratos";
   const initConfig = getElasticInitConfig();
 
   // 1. Recria o índice com base no arquivo declarativo init/elastic-init.json
-  const indexExists = await elastic.indices.exists({ index: indexName });
+  const indexExists = await elastic.indices.exists({ index: INDICE });
   if (indexExists) {
-    console.log(`[Elasticsearch] Índice '${indexName}' já existe. Recriando...`);
-    await elastic.indices.delete({ index: indexName });
+    console.log(`[Elasticsearch] Índice '${INDICE}' já existe. Recriando...`);
+    await elastic.indices.delete({ index: INDICE });
   }
 
   await elastic.indices.create({
-    index: indexName,
+    index: INDICE,
     settings: initConfig.settings,
     mappings: initConfig.mappings,
   });
 
-  // 2. Busca todos os pratos no MongoDB GastroHub
-  const colCardapio = getCollection("cardapio");
-  const colRestaurantes = getCollection("restaurantes");
+  // 2. Lê produtos e vendedores no MongoDB
+  const produtos = await getCollection("produtos").find().toArray();
+  const vendedores = await getCollection("vendedores").find().toArray();
 
-  const pratos = await colCardapio.find().toArray();
-  const restaurantes = await colRestaurantes.find().toArray();
-
-  const restMap = new Map<string, string>();
-  for (const r of restaurantes) {
-    restMap.set(r._id.toString(), r.nome);
+  // O nome do vendedor é desnormalizado dentro de cada produto do índice: o
+  // ElasticSearch não faz JOIN, e o cliente procura o produto também pelo nome da loja.
+  const mapaVendedores = new Map<string, string>();
+  for (const v of vendedores) {
+    mapaVendedores.set(v._id.toString(), v.nome);
   }
 
-  // 3. Indexa prato por prato
+  // 3. Indexa produto a produto
   let count = 0;
-  for (const prato of pratos) {
-    const restNome = prato.restaurante_id ? restMap.get(prato.restaurante_id.toString()) || "Desconhecido" : "Desconhecido";
+  for (const produto of produtos) {
+    const vendedorNome = produto.vendedor_id
+      ? mapaVendedores.get(produto.vendedor_id.toString()) ?? "Desconhecido"
+      : "Desconhecido";
 
     await elastic.index({
-      index: indexName,
-      id: prato._id.toString(),
-      document: {
-        prato_id: prato._id.toString(),
-        restaurante_id: prato.restaurante_id ? prato.restaurante_id.toString() : null,
-        restaurante_nome: restNome,
-        nome: prato.nome,
-        descricao: prato.descricao,
-        categoria: prato.categoria,
-        preco: prato.preco,
-        ingredientes: Array.isArray(prato.ingredientes) ? prato.ingredientes.join(", ") : prato.ingredientes,
-        alergenos: prato.alergenos || [],
-        disponivel: prato.disponivel !== false,
-      },
+      index: INDICE,
+      id: produto._id.toString(),
+      document: montarDocumentoBusca(produto, vendedorNome),
     });
     count++;
   }
 
-  await elastic.indices.refresh({ index: indexName });
-  console.log(`[Elasticsearch] Sucesso! ${count} pratos sincronizados no índice '${indexName}'.`);
+  await elastic.indices.refresh({ index: INDICE });
+  console.log(`[Elasticsearch] Sucesso! ${count} produtos sincronizados no índice '${INDICE}'.`);
 
   if (!keepConnectionsOpen) {
     await closeMongo();
     await closeElastic();
   }
+
+  return count;
 }
 
-// Execução direta via CLI
+/**
+ * Busca no MongoDB o nome do vendedor de um produto, para indexar um documento
+ * isolado nas rotas de escrita.
+ */
+export async function nomeDoVendedor(vendedorId: unknown): Promise<string> {
+  if (!vendedorId) return "Desconhecido";
+  const vendedor = await getCollection("vendedores").findOne({ _id: vendedorId as any });
+  return vendedor?.nome ?? "Desconhecido";
+}
+
+// Execução direta via CLI (npm run seed:elastic)
 if (process.argv[1] && process.argv[1].includes("seed-elastic")) {
   seedElasticsearch().catch((err) => {
     console.error("Erro ao popular Elasticsearch:", err);

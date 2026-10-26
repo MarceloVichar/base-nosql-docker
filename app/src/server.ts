@@ -18,12 +18,37 @@ app.use(express.json());
 // Rota raiz com mapa simples da API
 app.get("/", (req: Request, res: Response) => {
   res.json({
-    titulo: "UTFPR — NoSQL Starter App",
+    titulo: "PopsMarket — API do Marketplace",
     disciplina: "Banco de Dados NoSQL (TSI34E-TSI4)",
     professor: "Prof. Marcelo Vichar",
+    equipe: ["Matheus Popolin", "Sara Pereira de Almeida"],
     endpoints: {
       health: "GET /api/health",
-      itens_simples: "GET /api/itens",
+      busca: "GET /api/produtos?q=&categoria=&vendedor_id=&preco_max=",
+      leitura_com_cache: {
+        recentes: "GET /api/produtos/recentes",
+        por_categoria: "GET /api/produtos/categoria/:categoria",
+        detalhes: "GET /api/produtos/detalhes/:id",
+        do_vendedor: "GET /api/vendedor/:vendedor_id/produtos",
+      },
+      escrita_sincronizada: {
+        cadastrar: "POST /api/produtos",
+        substituir: "PUT /api/produtos/:id",
+        alterar: "PATCH /api/produtos/:id",
+        remover: "DELETE /api/produtos/:id",
+        pendencias: "GET /api/produtos/sincronizacao/pendentes",
+        reprocessar: "POST /api/produtos/sincronizacao/reprocessar",
+      },
+      estruturas_redis: {
+        carrinho_hash: "POST|GET /api/redis/carrinho/:cliente_id",
+        ranking_sorted_set: "POST /api/redis/ranking/venda | GET /api/redis/ranking/top",
+        categorias_set: "GET /api/redis/categorias",
+        fila_list: "GET /api/redis/sync/pendentes",
+      },
+      elasticsearch: {
+        analisar: "GET /api/busca/analisar?texto=",
+        reindexar: "POST /api/busca/reindexar",
+      },
     },
     interfaces_web: {
       elasticvue: "http://localhost:8400",
@@ -64,7 +89,7 @@ async function bootstrap() {
     console.log("\n🚀 Servidor Express rodando com sucesso!");
     console.log(`📡 URL Principal: http://localhost:${PORT}`);
     console.log(`🩺 Health Check:  http://localhost:${PORT}/api/health`);
-    console.log(`📦 Simple Coleção: http://localhost:${PORT}/api/itens`);
+    console.log(`🔎 Busca:         http://localhost:${PORT}/api/produtos?q=notebook`);
     console.log("=======================================================\n");
   });
 

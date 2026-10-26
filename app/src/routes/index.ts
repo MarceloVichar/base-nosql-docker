@@ -1,6 +1,9 @@
 import { Router, Request, Response } from "express";
 import produtosRoutes from "./produtos.routes.js";
 import clientesRoutes from "./clientes.routes.js";
+import vendedorRoutes from "./vendedor.routes.js";
+import buscaRoutes from "./busca.routes.js";
+import estruturasRedisRoutes from "./estruturas-redis.routes.js";
 import { getDb } from "../database/mongo.js";
 import { getRedisClient } from "../database/redis.js";
 import { getElasticClient } from "../database/elastic.js";
@@ -52,5 +55,10 @@ routes.get("/health", async (req: Request, res: Response) => {
 // Rotas de negócio do PopsMarket (5 consultas conectadas ao MongoDB)
 routes.use("/produtos", produtosRoutes);
 routes.use("/clientes", clientesRoutes);
+routes.use("/vendedor", vendedorRoutes);
+
+// Checkpoint 2 — busca textual (ElasticSearch) e estruturas de dados (Redis)
+routes.use("/busca", buscaRoutes);
+routes.use("/redis", estruturasRedisRoutes);
 
 export default routes;

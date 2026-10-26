@@ -1,21 +1,22 @@
 # =============================================================================
-# REDIS INITIALIZATION COMMANDS — GASTROHUB / PROJETO
+# REDIS INITIALIZATION COMMANDS — POPSMARKET
 # =============================================================================
-# Este arquivo é executado pelo script iniciar.sh ao subir o container do Redis.
-# Os alunos podem adicionar novos comandos (SET, HSET, SADD, ZADD, LPUSH) aqui.
+# Executado pelo iniciar.sh assim que o container do Redis responde ao PING.
+# Padrão de nomes das chaves: popsmarket:<entidade>:<id>
+# =============================================================================
 
-# 1. Configurações globais da aplicação (Estrutura: Hash)
-HSET config:app versao "1.0.0" ambiente "desenvolvimento" taxa_entrega_padrao "5.50" cidade "Guarapuava"
+# 1. Configurações globais da aplicacao (Estrutura: Hash)
+HSET popsmarket:config:app versao "2.0.0" ambiente "desenvolvimento" moeda "BRL" cidade "Guarapuava" frete_gratis_acima "299.90"
 
-# 2. Conjunto de categorias ativas para validação rápida (Estrutura: Set)
-SADD categorias:ativas "Pizzas" "Japonesa" "Burgers" "Brasileira" "Mexicana"
+# 2. Conjunto de categorias ativas do marketplace (Estrutura: Set)
+SADD popsmarket:categorias:ativas "Eletrônicos" "Informática" "Notebooks" "Celulares" "Áudio" "Casa" "Móveis" "Escritório" "Decoração" "Iluminação" "Moda" "Calçados" "Acessórios" "Esportes" "Fitness"
 
-# 3. Ranking de pratos mais pedidos para a home do app (Estrutura: Sorted Set)
-ZADD ranking:pratos:pedidos 250 "Combo Sashimi"
-ZADD ranking:pratos:pedidos 190 "Pizza Margherita"
-ZADD ranking:pratos:pedidos 140 "Classic Burger"
-ZADD ranking:pratos:pedidos 85 "Prato Feito Mineiro"
-ZADD ranking:pratos:pedidos 60 "Taco de Carne"
+# 3. Ranking de produtos mais vendidos para a vitrine da home (Estrutura: Sorted Set)
+ZADD popsmarket:ranking:produtos 320 "Fone de Ouvido Bluetooth JBL Tune 520"
+ZADD popsmarket:ranking:produtos 210 "Smartphone Samsung Galaxy A54"
+ZADD popsmarket:ranking:produtos 145 "Tênis Casual Masculino"
+ZADD popsmarket:ranking:produtos 98 "Notebook Lenovo IdeaPad 3"
+ZADD popsmarket:ranking:produtos 64 "Kit Halteres Ajustáveis 20kg"
 
-# 4. Contador inicial de acessos (Estrutura: String/Integer)
-SET stats:visitas:total 1000
+# 4. Contador global de visitas à vitrine (Estrutura: String/Integer)
+SET popsmarket:stats:visitas:total 1000
