@@ -4,13 +4,15 @@ WORKDIR /app
 
 # Instala dependências
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 # Copia o código fonte
 COPY tsconfig.json ./
 COPY src ./src
 
-EXPOSE 3000
+RUN npm run build
 
-# Executa em modo desenvolvimento com hot-reload (tsx watch)
-CMD ["npm", "run", "dev"]
+EXPOSE 3400
+
+# Prepara a cópia de busca antes de atender; executa o JavaScript compilado.
+CMD ["sh", "-c", "npm run seed:elastic && exec npm start"]

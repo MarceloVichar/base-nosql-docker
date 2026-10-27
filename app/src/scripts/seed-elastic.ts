@@ -1,4 +1,5 @@
 import fs from "fs";
+import { montarDocumentoBusca } from "../services/corridas-indexacao.js";
 import path from "path";
 import {
   connectMongo,
@@ -37,15 +38,10 @@ async function seedElasticsearch() {
 
   const existe = await elastic.indices.exists({ index: indice });
 
-  if (existe) {
-    await elastic.indices.delete({ index: indice });
-  }
-
-  await elastic.indices.create({
-    index: indice,
-    settings: configuracao.settings,
-    mappings: configuracao.mappings
-  });
+  // Na partida a API ainda não escuta. Reconstrução apenas da cópia de busca.
+  // Mapping/analyzer são imutáveis: recriar índice garante migração do Checkpoint 1.
+  if (existe) await elastic.indices.delete({ index: indice });
+  await elastic.indices.create({ index: indice, settings: configuracao.settings, mappings: configuracao.mappings });
 
   const corridas = await getCollection("corridas").find().toArray();
 
@@ -53,17 +49,7 @@ async function seedElasticsearch() {
     await elastic.index({
       index: indice,
       id: corrida._id.toString(),
-      document: {
-        corrida_id: corrida._id.toString(),
-        passageiro_id: corrida.passageiro_id?.toString() || null,
-        motorista_id: corrida.motorista_id?.toString() || null,
-        origem: corrida.origem?.endereco,
-        destino: corrida.destino?.endereco,
-        status: corrida.status,
-        valor_estimado: corrida.valor_estimado,
-        distancia_estimada_km: corrida.distancia_estimada_km,
-        data_solicitacao: corrida.data_solicitacao
-      }
+      document: montarDocumentoBusca(corrida)
     });
   }
 
@@ -77,5 +63,8 @@ async function seedElasticsearch() {
 
 seedElasticsearch().catch((erro) => {
   console.error("Erro ao sincronizar Elasticsearch:", erro);
-  process.exit(1);
+  process.exitCode = 1;
+}).finally(async () => {
+  await closeMongo();
+  await closeElastic();
 });

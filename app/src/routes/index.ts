@@ -1,3 +1,6 @@
+import buscaRoutes from "./busca.routes.js";
+import redisRoutes from "./redis.routes.js";
+import sincronizacaoRoutes from "./sincronizacao.routes.js";
 import { Router, Request, Response } from "express";
 import corridasRoutes from "./corridas.routes.js";
 import { getDb } from "../database/mongo.js";
@@ -25,7 +28,7 @@ routes.get("/health", async (req: Request, res: Response) => {
   } catch (erro: any) {
     status.bancos.mongodb = {
       status: "OFFLINE",
-      erro: erro.message
+      erro: "Serviço indisponível ou índice ausente."
     };
     status.status_geral = "PARCIAL";
   }
@@ -41,7 +44,7 @@ routes.get("/health", async (req: Request, res: Response) => {
   } catch (erro: any) {
     status.bancos.redis = {
       status: "OFFLINE",
-      erro: erro.message
+      erro: "Serviço indisponível ou índice ausente."
     };
     status.status_geral = "PARCIAL";
   }
@@ -52,12 +55,14 @@ routes.get("/health", async (req: Request, res: Response) => {
 
     status.bancos.elasticsearch = {
       status: "ONLINE",
-      cluster_status: health.status
+      cluster_status: health.status,
+      indice: "corridas",
+      documentos: (await elastic.count({ index: "corridas" })).count
     };
   } catch (erro: any) {
     status.bancos.elasticsearch = {
       status: "OFFLINE",
-      erro: erro.message
+      erro: "Serviço indisponível ou índice ausente."
     };
     status.status_geral = "PARCIAL";
   }
@@ -67,5 +72,9 @@ routes.get("/health", async (req: Request, res: Response) => {
 });
 
 routes.use("/corridas", corridasRoutes);
+
+routes.use("/busca", buscaRoutes);
+routes.use("/redis", redisRoutes);
+routes.use("/sincronizacao", sincronizacaoRoutes);
 
 export default routes;

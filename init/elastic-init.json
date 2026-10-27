@@ -1,7 +1,19 @@
 {
   "settings": {
     "number_of_shards": 1,
-    "number_of_replicas": 0
+    "number_of_replicas": 0,
+    "analysis": {
+      "analyzer": {
+        "texto_ptbr": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "asciifolding"
+          ]
+        }
+      }
+    }
   },
   "mappings": {
     "properties": {
@@ -15,10 +27,12 @@
         "type": "keyword"
       },
       "origem": {
-        "type": "text"
+        "type": "text",
+        "analyzer": "texto_ptbr"
       },
       "destino": {
-        "type": "text"
+        "type": "text",
+        "analyzer": "texto_ptbr"
       },
       "status": {
         "type": "keyword"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -16,15 +16,10 @@ fi
 
 echo "Removendo containers e volumes..."
 
-if docker info >/dev/null 2>&1; then
-    docker compose down -v
-    docker compose up -d --build
-elif sg docker -c "docker info" >/dev/null 2>&1; then
-    sg docker -c "docker compose down -v && docker compose up -d --build"
-else
-    sudo docker compose down -v
-    sudo docker compose up -d --build
+if ! docker info >/dev/null 2>&1; then
+    echo "Docker inacessível. Execute com um usuário autorizado." >&2
+    exit 1
 fi
-
-echo "Ambiente recriado com sucesso."
-echo "O banco 'borala' será preenchido novamente pelo init/mongo-init.js."
+# Exclusão somente após a confirmação explícita acima; nunca chamado pelo iniciar.sh.
+docker compose down -v
+exec "$SCRIPT_DIR/iniciar.sh"

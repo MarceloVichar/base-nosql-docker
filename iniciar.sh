@@ -1,49 +1,27 @@
 #!/usr/bin/env bash
-
-set -e
-
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
-
-APP_PORTS=(3400 8400 8401 8402 27034 6334 9234)
-
-echo "Verificando portas utilizadas pelo projeto..."
-
-for port in "${APP_PORTS[@]}"; do
-    if command -v fuser >/dev/null 2>&1; then
-        fuser -k -n tcp "$port" >/dev/null 2>&1 || true
-    fi
-done
-
-echo "Iniciando ambiente do Bora Lá..."
-
-if docker info >/dev/null 2>&1; then
-    docker compose up -d --build --remove-orphans
-elif sg docker -c "docker info" >/dev/null 2>&1; then
-    sg docker -c "docker compose up -d --build --remove-orphans"
-else
-    sudo docker compose up -d --build --remove-orphans
+if ! command -v docker >/dev/null || ! docker info >/dev/null 2>&1; then
+    echo "Erro: Docker inacessível. Inicie o daemon e execute com um usuário autorizado ao Docker." >&2
+    exit 1
 fi
-
-if [[ -f "$SCRIPT_DIR/init/redis-init.commands" ]]; then
-    echo "Carregando dados iniciais do Redis..."
-
-    for i in {1..10}; do
-        if docker exec nosql_redis redis-cli ping >/dev/null 2>&1; then
-            docker exec -i nosql_redis redis-cli < "$SCRIPT_DIR/init/redis-init.commands" >/dev/null 2>&1 || true
-            break
-        fi
-
-        sleep 1
-    done
+docker compose version >/dev/null
+echo "Iniciando Bora Lá; aguardando bancos, carga Mongo → Elasticsearch e API..."
+# O CMD da API executa o seed antes de abrir a porta. Sem alterações em volumes Mongo/Redis.
+if ! docker compose up -d --build --remove-orphans --wait --wait-timeout 240; then
+    echo "Erro ao iniciar. Verifique conflitos nas portas 3400, 27034, 6334, 9234, 8400–8402 e os logs abaixo. Nenhum processo foi encerrado." >&2
+    docker compose logs --tail=40 app elasticsearch
+    exit 1
 fi
-
-echo ""
-echo "Bora Lá iniciado com sucesso."
-echo "API:            http://localhost:3400"
-echo "Health Check:   http://localhost:3400/api/health"
-echo "Corridas:       http://localhost:3400/api/corridas/disponiveis"
-echo "Mongo Express:  http://localhost:8401"
-echo "Redis Commander:http://localhost:8402"
-echo "ElasticVue:     http://localhost:8400"
-echo ""
+# Verificação real, inclusive índice; fetch roda no Node do container, não depende do host.
+docker compose exec -T app node -e 'fetch("http://localhost:3400/api/health").then(async r => { const b = await r.json(); console.log(JSON.stringify(b)); if (r.status !== 200) process.exit(1); }).catch(e => { console.error(e.message); process.exit(1); })'
+cat <<'URLS'
+Bora Lá pronto (índice corridas carregado automaticamente).
+API:             http://localhost:3400
+Health:          http://localhost:3400/api/health
+Corridas:        http://localhost:3400/api/corridas/disponiveis
+Mongo Express:   http://localhost:8401
+Redis Commander: http://localhost:8402
+ElasticVue:      http://localhost:8400
+URLS
