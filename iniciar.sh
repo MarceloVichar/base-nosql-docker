@@ -1,79 +1,27 @@
 #!/usr/bin/env bash
-#
-# iniciar.sh — Sobe todos os bancos NoSQL, UIs e a aplicação Express
-#             (com limpeza prévia automática de portas e carga dos arquivos declarativos em init/)
-#
-set -e
-
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
-
-CYAN='\033[0;36m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-# ── Portas dedicadas da disciplina TSI34E ─────────────────────────────────────
-# 3400: App | 8400: ElasticVue | 8401: MongoExpress | 8402: RedisCommander
-# 27034: MongoDB | 6334: Redis | 9234: Elasticsearch
-APP_PORTS=(3400 8400 8401 8402 27034 6334 9234)
-
-echo -e "${CYAN}Verificando e liberando portas para evitar conflitos no Ubuntu...${NC}"
-
-for port in "${APP_PORTS[@]}"; do
-    if command -v fuser >/dev/null 2>&1; then
-        fuser -k -n tcp "$port" >/dev/null 2>&1 || true
-    elif command -v lsof >/dev/null 2>&1; then
-        PIDS=$(lsof -ti :"$port" 2>/dev/null || true)
-        if [[ -n "$PIDS" ]]; then
-            echo -e "${YELLOW}Liberando porta $port (PID: $PIDS)...${NC}"
-            kill -9 $PIDS >/dev/null 2>&1 || true
-        fi
-    fi
-done
-
-echo -e "${CYAN}Iniciando ambiente NoSQL completo...${NC}"
-
-# Testar se o docker roda direto ou precisa do grupo/sudo
-if docker info >/dev/null 2>&1; then
-    docker compose up -d --build --remove-orphans
-elif sg docker -c "docker info" >/dev/null 2>&1; then
-    sg docker -c "docker compose up -d --build --remove-orphans"
-else
-    echo -e "${YELLOW}[AVISO] Permissão do Docker pendente no terminal. Executando com sudo...${NC}"
-    sudo docker compose up -d --build --remove-orphans
+if ! command -v docker >/dev/null || ! docker info >/dev/null 2>&1; then
+    echo "Erro: Docker inacessível. Inicie o daemon e execute com um usuário autorizado ao Docker." >&2
+    exit 1
 fi
-
-# ── Executar comandos declarativos do Redis em init/redis-init.commands ───────
-if [[ -f "$SCRIPT_DIR/init/redis-init.commands" ]]; then
-    echo -e "${CYAN}Carregando estruturas declarativas no Redis (init/redis-init.commands)...${NC}"
-    for i in {1..10}; do
-        if docker exec nosql_redis redis-cli ping >/dev/null 2>&1; then
-            docker exec -i nosql_redis redis-cli < "$SCRIPT_DIR/init/redis-init.commands" >/dev/null 2>&1 || true
-            break
-        fi
-        sleep 1
-    done
+docker compose version >/dev/null
+echo "Iniciando Bora Lá; aguardando bancos, carga Mongo → Elasticsearch e API..."
+# O CMD da API executa o seed antes de abrir a porta. Sem alterações em volumes Mongo/Redis.
+if ! docker compose up -d --build --remove-orphans --wait --wait-timeout 240; then
+    echo "Erro ao iniciar. Verifique conflitos nas portas 3400, 27034, 6334, 9234, 8400–8402 e os logs abaixo. Nenhum processo foi encerrado." >&2
+    docker compose logs --tail=40 app elasticsearch
+    exit 1
 fi
-
-echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║             🚀 AMBIENTE NOSQL ATIVO E PRONTO!                    ║${NC}"
-echo -e "${GREEN}╠══════════════════════════════════════════════════════════════════╣${NC}"
-echo -e "║  ${BOLD}APLICAÇÃO NODE/TYPESCRIPT (DOCKER):${NC}                             ║"
-echo -e "║  • API Express (Hot-Reload):       ${CYAN}http://localhost:3400${NC}          ║"
-echo -e "║  • Health Check dos 3 bancos:      ${CYAN}http://localhost:3400/api/health${NC} ║"
-echo -e "║  • Simple Collection (GET):        ${CYAN}http://localhost:3400/api/itens${NC}  ║"
-echo -e "${GREEN}╠══════════════════════════════════════════════════════════════════╣${NC}"
-echo -e "║  ${BOLD}INTERFACES VISUAIS (WEB):${NC}                                      ║"
-echo -e "║  • ElasticVue (Elasticsearch):     ${CYAN}http://localhost:8400${NC} (Use http://localhost:9234) ║"
-echo -e "║  • Mongo Express (MongoDB):        ${CYAN}http://localhost:8401${NC}          ║"
-echo -e "║  • Redis Commander (Redis):        ${CYAN}http://localhost:8402${NC}          ║"
-echo -e "${GREEN}╠══════════════════════════════════════════════════════════════════╣${NC}"
-echo -e "║  ${BOLD}📁 ARQUIVOS DECLARATIVOS (Database as Code):${NC}                   ║"
-echo -e "║  • MongoDB:       ${CYAN}init/mongo-init.js${NC}                              ║"
-echo -e "║  • Elasticsearch: ${CYAN}init/elastic-init.json${NC}                          ║"
-echo -e "║  • Redis:         ${CYAN}init/redis-init.commands${NC}                        ║"
-echo -e "${GREEN}╚══════════════════════════════════════════════════════════════════╝${NC}"
-echo ""
+# Verificação real, inclusive índice; fetch roda no Node do container, não depende do host.
+docker compose exec -T app node -e 'fetch("http://localhost:3400/api/health").then(async r => { const b = await r.json(); console.log(JSON.stringify(b)); if (r.status !== 200) process.exit(1); }).catch(e => { console.error(e.message); process.exit(1); })'
+cat <<'URLS'
+Bora Lá pronto (índice corridas carregado automaticamente).
+API:             http://localhost:3400
+Health:          http://localhost:3400/api/health
+Corridas:        http://localhost:3400/api/corridas/disponiveis
+Mongo Express:   http://localhost:8401
+Redis Commander: http://localhost:8402
+ElasticVue:      http://localhost:8400
+URLS

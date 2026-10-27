@@ -1,161 +1,160 @@
-# Ambiente de Desenvolvimento NoSQL & Aplicação Starter
+# Bora Lá
 
-Ambiente integrado com **Docker**, **MongoDB**, **Redis**, **Elasticsearch**, interfaces visuais web e uma **aplicação Node.js + TypeScript conteinerizada com Hot-Reload** para a disciplina de **Banco de Dados NoSQL (TSI34E-TSI4)** da UTFPR Campus Guarapuava.
+Projeto da disciplina de **Banco de Dados NoSQL** da UTFPR.
 
----
+O Bora Lá é um sistema simples de corridas. O passageiro pode solicitar uma corrida informando origem e destino e um motorista cadastrado pode aceitar a solicitação.
 
-## ⚡ Passo 1: Instalação e Configuração do Docker (Apenas 1 vez por máquina)
+## Tecnologias
 
-Se você está em um computador do laboratório ou no seu notebook com **Ubuntu / Linux Mint**, execute o instalador automatizado que configura todas as permissões de usuário:
+- MongoDB
+- Node.js
+- TypeScript
+- Express
+- Docker
+- Redis
+- Elasticsearch
 
-```bash
-# 1. Conceder permissão de execução aos scripts
-chmod +x *.sh
+## Banco principal
 
-# 2. Executar o instalador (ele solicitará sua senha apenas uma vez)
-./setup.sh
+O banco utilizado pelo projeto é:
+
+```text
+borala
 ```
 
-### 🔑 Como funciona a permissão sem `sudo` no Ubuntu:
-O script adiciona seu usuário ao grupo `docker` e ajusta as permissões do socket `/var/run/docker.sock`.
-- **Se abrir um novo terminal e der erro de permissão**, basta rodar uma única vez:
-  ```bash
-  newgrp docker
-  ```
-  *(Ou faça logout e login na sua sessão do sistema)*.
+Coleções principais:
 
----
+```text
+passageiros
+motoristas
+corridas
+avaliacoes
+```
 
-## 🚀 Passo 2: Subir o Ambiente Completo com 1 Comando
+## Iniciar o projeto
 
-Para subir todos os bancos, interfaces web **E** a aplicação Node/TypeScript juntos:
+Dê permissão aos scripts caso seja necessário:
+
+```bash
+chmod +x iniciar.sh parar.sh reset.sh
+```
+
+Inicie o ambiente:
 
 ```bash
 ./iniciar.sh
 ```
 
-> [!NOTE]
-> O script `./iniciar.sh` possui um mecanismo que **libera automaticamente as portas antes de iniciar**, evitando qualquer erro de conflito de portas com outros serviços no Ubuntu.
+## Endereços
 
----
+| Serviço | Endereço |
+|---|---|
+| API | http://localhost:3400 |
+| Health Check | http://localhost:3400/api/health |
+| Mongo Express | http://localhost:8401 |
+| Redis Commander | http://localhost:8402 |
+| ElasticVue | http://localhost:8400 |
 
-## 🌐 Painéis e Acessos Web (Portas Dedicadas TSI34E)
+## Consultas do Checkpoint 1
 
-Para evitar conflitos com outros programas locais do Ubuntu, utilizamos portas dedicadas:
+### Corridas disponíveis
 
-| Serviço / Ferramenta | Endereço Web | Finalidade | Credenciais |
-| :--- | :--- | :--- | :--- |
-| **API Starter (Express + TS)** | [http://localhost:3400](http://localhost:3400) | Aplicação com hot-reload ativo | Sem autenticação |
-| **ElasticVue (Elasticsearch)** | [http://localhost:8400](http://localhost:8400) | Interface visual para explorar índices e buscas | Conecta em `http://localhost:9200` |
-| **Mongo Express (MongoDB)** | [http://localhost:8401](http://localhost:8401) | Visualizar coleções do banco **GastroHub** | Já conecta autenticado |
-| **Redis Commander (Redis)** | [http://localhost:8402](http://localhost:8402) | Inspecionar chaves, TTLs e valores em memória | Sem necessidade de login |
-| **MongoDB (Porta direta)** | `localhost:27034` | Conexão para Compass, DBeaver ou VS Code | `root` / `root` |
-| **Redis (Porta direta)** | `localhost:6334` | Conexão direta TCP | Sem senha |
-| **Elasticsearch (Porta direta)** | `http://localhost:9234` | Endpoint REST para queries | Sem SSL (Modo Dev Lab) |
-
----
-
-## 📡 Endpoints Prontos para Testar
-
-- **Health Check dos 3 Bancos:** [http://localhost:3400/api/health](http://localhost:3400/api/health)
-- **Simple Collection (GET /api/itens):** [http://localhost:3400/api/itens](http://localhost:3400/api/itens)
-  - *Dica:* Na 1ª requisição, você verá `origem: "MONGODB (Salvo no Redis por 60s)"`. Na 2ª requisição, você verá `origem: "REDIS_CACHE (< 2ms)"`!
-
----
-
-## 🧑‍💻 Como Programar e Criar Novas Funções nas Aulas
-
-Você **não precisa instalar o Node.js na sua máquina** se não quiser. O código da pasta `app/src/` está montado em tempo real no container Docker.
-
-### 🔄 Hot-Reload Automático:
-Quando você editar e salvar qualquer arquivo em `app/src/` no seu VS Code, o servidor dentro do Docker reinicia instantaneamente em menos de 1 segundo!
-
-### Estrutura do Código em `app/src/`:
-
-```
-app/src/
-├── database/            # Conexões prontas (Singletons)
-│   ├── mongo.ts         # getDb(), getCollection("colecao")
-│   ├── redis.ts         # getRedisClient(), cacheGet(), cacheSet()
-│   └── elastic.ts       # getElasticClient()
-├── controllers/         # Funções que tratam requisições e acessam os bancos
-│   └── itens.controller.ts  # Controller com GET pronto e simples!
-└── routes/              # Mapeamento de rotas HTTP
-    ├── index.ts         # Health check e agregador
-    └── itens.routes.ts  # Rota GET /api/itens
+```http
+GET /api/corridas/disponiveis
 ```
 
-### Exemplo: Como adicionar uma nova função no controller
+### Histórico do passageiro
 
-Abra `app/src/controllers/itens.controller.ts` e adicione seu método:
+```http
+GET /api/corridas/passageiro/:id
+```
 
-```typescript
-import { Request, Response } from "express";
-import { getCollection } from "../database/mongo.js";
-import { cacheSet, cacheGet } from "../database/redis.js";
+### Histórico do motorista
 
-export class ItensController {
-  // 1. Método que já vem pronto:
-  static async listar(req: Request, res: Response): Promise<void> { ... }
+```http
+GET /api/corridas/motorista/:id
+```
 
-  // 2. Novo método adicionado durante a aula:
-  static async buscarPorCategoria(req: Request, res: Response): Promise<void> {
-    try {
-      const col = getCollection("itens");
-      const categoria = req.params.categoria;
-      const resultados = await col.find({ categoria }).toArray();
-      res.json({ total: resultados.length, resultados });
-    } catch (err: any) {
-      res.status(500).json({ erro: err.message });
-    }
-  }
+### Filtro por status e valor
+
+Exemplo:
+
+```http
+GET /api/corridas/filtro?status=finalizada&valorMin=10&valorMax=30
+```
+
+### Aceitar corrida
+
+```http
+PATCH /api/corridas/:id/aceitar
+```
+
+Corpo da requisição:
+
+```json
+{
+  "motorista_id": "ID_DO_MOTORISTA"
 }
 ```
 
-E registre a rota em `app/src/routes/itens.routes.ts`:
+## Recriar o banco
 
-```typescript
-router.get("/categoria/:categoria", ItensController.buscarPorCategoria);
+Para apagar os volumes locais e executar novamente os dados do `init/mongo-init.js`:
+
+```bash
+./reset.sh
 ```
 
-Ao salvar o arquivo (`Ctrl + S`), teste em: `http://localhost:3400/api/itens/categoria/Pizzas`.
+## Documentação do Checkpoint
 
----
+A documentação da atividade está no arquivo:
 
-## 📁 Como Configurar e Inicializar os Bancos (*Database as Code*)
-
-Para que o professor e seus colegas consigam avaliar sua modelagem ao clonar seu fork, **todas as configurações de banco devem ser versionadas em arquivos na pasta `init/`**:
-
-```
-init/
-├── mongo-init.js          # MongoDB: coleções, validações, createIndex e dados iniciais
-├── elastic-init.json      # Elasticsearch: mappings, tipos (text/keyword) e analyzers
-└── redis-init.commands    # Redis: chaves de configuração, Hashes, Sets e Rankings
+```text
+CHECKPOINT_1.md
 ```
 
-1. **MongoDB (`init/mongo-init.js`):**
-   - Escreva seus comandos `db.createCollection()`, `db.colecao.createIndex(...)` e `db.colecao.insertMany([...])`.
-   - Executado automaticamente na primeira inicialização do container.
-2. **Elasticsearch (`init/elastic-init.json`):**
-   - Defina os `mappings` e `properties` do seu índice para buscas por relevância e filtros.
-   - Sincronizado automaticamente pela aplicação ao iniciar.
-3. **Redis (`init/redis-init.commands`):**
-   - Escreva seus comandos Redis (`HSET`, `SADD`, `ZADD`, `SET`) para criar chaves, configurações e rankings iniciais.
-   - Executado automaticamente pelo script `./iniciar.sh`.
+## Checkpoint 2
 
----
+A documentação oficial, com arquitetura, consistência, evidências e roteiro `curl`, está em [CHECKPOINT_2.md](CHECKPOINT_2.md). O Checkpoint 1 e seus endpoints foram mantidos.
 
-## 🛠️ Comandos de Manutenção
+Com Docker Engine e Docker Compose v2 recente (com `up --wait`) acessíveis ao usuário:
 
-- **Ver logs da aplicação em tempo real:**
-  ```bash
-  docker compose logs -f app
-  ```
-- **Parar os containers (sem perder dados):**
-  ```bash
-  ./parar.sh
-  ```
-- **Resetar tudo para o estado original de fábrica (GastroHub limpo):**
-  ```bash
-  ./reset.sh
-  ```
+```bash
+git clone <URL_DO_REPOSITORIO_DA_EQUIPE>
+cd base-nosql-docker
+./iniciar.sh
+```
+
+O host não precisa de Node/npm para iniciar. O Docker compila TypeScript, aguarda os três bancos e executa o seed Mongo → Elasticsearch **antes de abrir a API**. A inicialização recria apenas o índice derivado `corridas`; não apaga dados do Mongo/Redis. Não há encerramento de processos por porta nem instalação automática do Docker. Se uma porta estiver ocupada ou um serviço falhar, o script retorna erro e exibe logs. O `reset.sh` continua destrutivo e exige confirmação manual; não é necessário para instalar o Checkpoint 2.
+
+| Banco | Papel | Porta no host |
+|---|---|---|
+| MongoDB 7 | Fonte da verdade: passageiros, motoristas, corridas, avaliações | 27034 |
+| Redis 7 | Cache de detalhe (60 s), List de buscas (24 h), Set de pendências | 6334 |
+| Elasticsearch 8.11 | Projeção de corridas, busca fuzzy e filtro exato | 9234 |
+
+| Método | Rota nova | Uso |
+|---|---|---|
+| GET | `/api/corridas/:id` | Cache-aside, com indicador MISS/HIT |
+| PATCH | `/api/corridas/:id` | Endereço/preço de corrida aguardando motorista |
+| GET | `/api/busca/corridas?q=UTFP&status=aguardando_motorista&passageiroId=...` | Busca textual; filtros e passageiro opcionais |
+| GET | `/api/redis/buscas/:passageiroId` | Últimas 10 buscas |
+| GET | `/api/sincronizacao/pendentes` | IDs com indexação pendente |
+| POST | `/api/sincronizacao/reprocessar` | Reindexa versão atual do Mongo |
+
+Edição e aceite respondem HTTP 200 quando sincronizados, ou **202 quando o Mongo já foi salvo e alguma etapa derivada requer atenção**. A simulação `?simular_falha=elastic` exige `NODE_ENV=development` **e** `PERMITIR_SIMULACAO_FALHA=true` (desativada por padrão). Exemplo para uma apresentação em ambiente de desenvolvimento:
+
+```bash
+PERMITIR_SIMULACAO_FALHA=true ./iniciar.sh
+```
+
+Para conferir localmente os tipos e a configuração:
+
+```bash
+(cd app && npm ci && npm run build)
+bash -n iniciar.sh
+bash -n reset.sh
+docker compose config --quiet
+```
+
+Para executar o teste de integração com `curl`, Python 3 e Docker, use uma instância **isolada**: o teste altera e aceita corridas, valida concorrência e pressupõe o seed inicial ainda disponível. Veja o procedimento em `CHECKPOINT_2.md`. Nenhum teste chama reset, remove volumes ou executa `FLUSHALL`.

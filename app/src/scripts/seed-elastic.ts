@@ -1,115 +1,70 @@
 import fs from "fs";
+import { montarDocumentoBusca } from "../services/corridas-indexacao.js";
 import path from "path";
-import { connectMongo, getCollection, closeMongo } from "../database/mongo.js";
-import { connectElastic, getElasticClient, closeElastic } from "../database/elastic.js";
+import {
+  connectMongo,
+  getCollection,
+  closeMongo
+} from "../database/mongo.js";
+import {
+  connectElastic,
+  getElasticClient,
+  closeElastic
+} from "../database/elastic.js";
 
-function getElasticInitConfig() {
-  // Procura o arquivo init/elastic-init.json
-  const possiblePaths = [
+function carregarConfiguracao() {
+  const caminhos = [
     path.resolve(process.cwd(), "init", "elastic-init.json"),
     path.resolve(process.cwd(), "..", "init", "elastic-init.json"),
-    path.resolve("/app", "init", "elastic-init.json"),
+    path.resolve("/app", "init", "elastic-init.json")
   ];
 
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      const raw = fs.readFileSync(p, "utf-8");
-      return JSON.parse(raw);
+  for (const caminho of caminhos) {
+    if (fs.existsSync(caminho)) {
+      return JSON.parse(fs.readFileSync(caminho, "utf-8"));
     }
   }
 
-  // Fallback padrão se não encontrar o arquivo
-  return {
-    settings: { number_of_shards: 1, number_of_replicas: 0 },
-    mappings: {
-      properties: {
-        prato_id: { type: "keyword" },
-        restaurante_id: { type: "keyword" },
-        restaurante_nome: { type: "text" },
-        nome: { type: "text", boost: 3 },
-        descricao: { type: "text", boost: 2 },
-        categoria: { type: "keyword" },
-        preco: { type: "float" },
-        ingredientes: { type: "text" },
-        alergenos: { type: "keyword" },
-        disponivel: { type: "boolean" },
-      },
-    },
-  };
+  throw new Error("Arquivo init/elastic-init.json não encontrado.");
 }
 
-export async function seedElasticsearch(keepConnectionsOpen = false) {
-  console.log("[Elasticsearch] Verificando/sincronizando índice 'pratos' a partir de init/elastic-init.json...");
-
+async function seedElasticsearch() {
   await connectMongo();
   await connectElastic();
 
   const elastic = getElasticClient();
-  const indexName = "pratos";
-  const initConfig = getElasticInitConfig();
+  const configuracao = carregarConfiguracao();
+  const indice = "corridas";
 
-  // 1. Recria o índice com base no arquivo declarativo init/elastic-init.json
-  const indexExists = await elastic.indices.exists({ index: indexName });
-  if (indexExists) {
-    console.log(`[Elasticsearch] Índice '${indexName}' já existe. Recriando...`);
-    await elastic.indices.delete({ index: indexName });
-  }
+  const existe = await elastic.indices.exists({ index: indice });
 
-  await elastic.indices.create({
-    index: indexName,
-    settings: initConfig.settings,
-    mappings: initConfig.mappings,
-  });
+  // Na partida a API ainda não escuta. Reconstrução apenas da cópia de busca.
+  // Mapping/analyzer são imutáveis: recriar índice garante migração do Checkpoint 1.
+  if (existe) await elastic.indices.delete({ index: indice });
+  await elastic.indices.create({ index: indice, settings: configuracao.settings, mappings: configuracao.mappings });
 
-  // 2. Busca todos os pratos no MongoDB GastroHub
-  const colCardapio = getCollection("cardapio");
-  const colRestaurantes = getCollection("restaurantes");
+  const corridas = await getCollection("corridas").find().toArray();
 
-  const pratos = await colCardapio.find().toArray();
-  const restaurantes = await colRestaurantes.find().toArray();
-
-  const restMap = new Map<string, string>();
-  for (const r of restaurantes) {
-    restMap.set(r._id.toString(), r.nome);
-  }
-
-  // 3. Indexa prato por prato
-  let count = 0;
-  for (const prato of pratos) {
-    const restNome = prato.restaurante_id ? restMap.get(prato.restaurante_id.toString()) || "Desconhecido" : "Desconhecido";
-
+  for (const corrida of corridas) {
     await elastic.index({
-      index: indexName,
-      id: prato._id.toString(),
-      document: {
-        prato_id: prato._id.toString(),
-        restaurante_id: prato.restaurante_id ? prato.restaurante_id.toString() : null,
-        restaurante_nome: restNome,
-        nome: prato.nome,
-        descricao: prato.descricao,
-        categoria: prato.categoria,
-        preco: prato.preco,
-        ingredientes: Array.isArray(prato.ingredientes) ? prato.ingredientes.join(", ") : prato.ingredientes,
-        alergenos: prato.alergenos || [],
-        disponivel: prato.disponivel !== false,
-      },
+      index: indice,
+      id: corrida._id.toString(),
+      document: montarDocumentoBusca(corrida)
     });
-    count++;
   }
 
-  await elastic.indices.refresh({ index: indexName });
-  console.log(`[Elasticsearch] Sucesso! ${count} pratos sincronizados no índice '${indexName}'.`);
+  await elastic.indices.refresh({ index: indice });
 
-  if (!keepConnectionsOpen) {
-    await closeMongo();
-    await closeElastic();
-  }
+  console.log(`${corridas.length} corridas enviadas para o Elasticsearch.`);
+
+  await closeMongo();
+  await closeElastic();
 }
 
-// Execução direta via CLI
-if (process.argv[1] && process.argv[1].includes("seed-elastic")) {
-  seedElasticsearch().catch((err) => {
-    console.error("Erro ao popular Elasticsearch:", err);
-    process.exit(1);
-  });
-}
+seedElasticsearch().catch((erro) => {
+  console.error("Erro ao sincronizar Elasticsearch:", erro);
+  process.exitCode = 1;
+}).finally(async () => {
+  await closeMongo();
+  await closeElastic();
+});

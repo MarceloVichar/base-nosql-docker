@@ -1,4 +1,4 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import routes from "./routes/index.js";
@@ -11,65 +11,62 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3400;
 
-// Middlewares
 app.use(cors());
 app.use(express.json());
 
-// Rota raiz com mapa simples da API
 app.get("/", (req: Request, res: Response) => {
   res.json({
-    titulo: "UTFPR — NoSQL Starter App",
-    disciplina: "Banco de Dados NoSQL (TSI34E-TSI4)",
-    professor: "Prof. Marcelo Vichar",
+    projeto: "Bora Lá",
+    descricao: "API do sistema de corridas",
     endpoints: {
       health: "GET /api/health",
-      itens_simples: "GET /api/itens",
-    },
-    interfaces_web: {
-      elasticvue: "http://localhost:8400",
-      mongo_express: "http://localhost:8401",
-      redis_commander: "http://localhost:8402",
-    },
+      corridas_disponiveis: "GET /api/corridas/disponiveis",
+      historico_passageiro: "GET /api/corridas/passageiro/:id",
+      historico_motorista: "GET /api/corridas/motorista/:id",
+      filtro_corridas: "GET /api/corridas/filtro",
+      aceitar_corrida: "PATCH /api/corridas/:id/aceitar",
+      detalhe_corrida: "GET /api/corridas/:id",
+      editar_corrida: "PATCH /api/corridas/:id",
+      busca: "GET /api/busca/corridas?q=UTFP&status=aguardando_motorista",
+      buscas_recentes: "GET /api/redis/buscas/:passageiroId",
+      pendentes: "GET /api/sincronizacao/pendentes",
+      reprocessar: "POST /api/sincronizacao/reprocessar"
+    }
   });
 });
 
-// Rotas da API
 app.use("/api", routes);
+app.use((erro: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error("[HTTP] Requisição rejeitada:", erro.message);
+  res.status(erro.status === 400 ? 400 : erro.status === 413 ? 413 : 500)
+    .json({ erro: erro.status === 400 ? "JSON inválido." : "Não foi possível processar a requisição." });
+});
 
-// Inicialização dos bancos e servidor HTTP
-async function bootstrap() {
-  console.log("\n=======================================================");
-  console.log("  Iniciando conexões com os bancos NoSQL...");
-  console.log("=======================================================");
-
+async function iniciarServidor() {
   try {
     await connectMongo();
-  } catch (err: any) {
-    console.error(`[MongoDB] Erro na inicialização: ${err.message}`);
+  } catch (erro: any) {
+    console.error(`[MongoDB] Erro: ${erro.message}`);
   }
 
   try {
     await connectRedis();
-  } catch (err: any) {
-    console.error(`[Redis] Erro na inicialização: ${err.message}`);
+  } catch (erro: any) {
+    console.error(`[Redis] Erro: ${erro.message}`);
   }
 
   try {
     await connectElastic();
-  } catch (err: any) {
-    console.warn(`[Elasticsearch] Aviso: Cluster não respondeu no startup (${err.message}).`);
+  } catch (erro: any) {
+    console.warn(`[Elasticsearch] Aviso: ${erro.message}`);
   }
 
   const server = app.listen(PORT, () => {
-    console.log("\n🚀 Servidor Express rodando com sucesso!");
-    console.log(`📡 URL Principal: http://localhost:${PORT}`);
-    console.log(`🩺 Health Check:  http://localhost:${PORT}/api/health`);
-    console.log(`📦 Simple Coleção: http://localhost:${PORT}/api/itens`);
-    console.log("=======================================================\n");
+    console.log(`Servidor Bora Lá rodando em http://localhost:${PORT}`);
+    console.log(`Health Check: http://localhost:${PORT}/api/health`);
   });
 
-  const shutdown = async () => {
-    console.log("\nEncerrando conexões...");
+  const encerrar = async () => {
     server.close();
     await closeMongo();
     await closeRedis();
@@ -77,8 +74,8 @@ async function bootstrap() {
     process.exit(0);
   };
 
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", encerrar);
+  process.on("SIGTERM", encerrar);
 }
 
-bootstrap();
+iniciarServidor();

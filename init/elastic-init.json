@@ -1,41 +1,50 @@
 {
   "settings": {
     "number_of_shards": 1,
-    "number_of_replicas": 0
+    "number_of_replicas": 0,
+    "analysis": {
+      "analyzer": {
+        "texto_ptbr": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "asciifolding"
+          ]
+        }
+      }
+    }
   },
   "mappings": {
     "properties": {
-      "prato_id": {
+      "corrida_id": {
         "type": "keyword"
       },
-      "restaurante_id": {
+      "passageiro_id": {
         "type": "keyword"
       },
-      "restaurante_nome": {
-        "type": "text"
+      "motorista_id": {
+        "type": "keyword"
       },
-      "nome": {
+      "origem": {
         "type": "text",
-        "boost": 3
+        "analyzer": "texto_ptbr"
       },
-      "descricao": {
+      "destino": {
         "type": "text",
-        "boost": 2
+        "analyzer": "texto_ptbr"
       },
-      "categoria": {
+      "status": {
         "type": "keyword"
       },
-      "preco": {
+      "valor_estimado": {
         "type": "float"
       },
-      "ingredientes": {
-        "type": "text"
+      "distancia_estimada_km": {
+        "type": "float"
       },
-      "alergenos": {
-        "type": "keyword"
-      },
-      "disponivel": {
-        "type": "boolean"
+      "data_solicitacao": {
+        "type": "date"
       }
     }
   }

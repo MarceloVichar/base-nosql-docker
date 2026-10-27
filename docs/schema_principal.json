@@ -1,0 +1,38 @@
+{
+  "_id": "ObjectId(...)",
+  "passageiro_id": "ObjectId(...)",
+  "motorista_id": null,
+  "origem": {
+    "endereco": "Centro, Guarapuava - PR",
+    "coordenadas": [
+      -51.4628,
+      -25.3907
+    ]
+  },
+  "destino": {
+    "endereco": "UTFPR Guarapuava",
+    "coordenadas": [
+      -51.4732,
+      -25.3834
+    ]
+  },
+  "distancia_estimada_km": 5.8,
+  "tempo_estimado_minutos": 12,
+  "valor_estimado": 18.5,
+  "valor_final": null,
+  "status": "aguardando_motorista",
+  "corrida_ativa": true,
+  "data_solicitacao": "2026-09-16T21:00:00Z",
+  "data_aceite": null,
+  "data_finalizacao": null,
+  "historico_status": [
+    {
+      "status": "solicitada",
+      "data": "2026-09-16T21:00:00Z"
+    },
+    {
+      "status": "aguardando_motorista",
+      "data": "2026-09-16T21:00:02Z"
+    }
+  ]
+}

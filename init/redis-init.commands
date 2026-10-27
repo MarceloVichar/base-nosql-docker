@@ -1,21 +1,10 @@
-# =============================================================================
-# REDIS INITIALIZATION COMMANDS — GASTROHUB / PROJETO
-# =============================================================================
-# Este arquivo é executado pelo script iniciar.sh ao subir o container do Redis.
-# Os alunos podem adicionar novos comandos (SET, HSET, SADD, ZADD, LPUSH) aqui.
+# Redis - Projeto Bora Lá
 
-# 1. Configurações globais da aplicação (Estrutura: Hash)
-HSET config:app versao "1.0.0" ambiente "desenvolvimento" taxa_entrega_padrao "5.50" cidade "Guarapuava"
+# Informações simples da aplicação
+HSET config:app nome "Bora La" versao "1.0.0" ambiente "desenvolvimento" cidade "Guarapuava"
 
-# 2. Conjunto de categorias ativas para validação rápida (Estrutura: Set)
-SADD categorias:ativas "Pizzas" "Japonesa" "Burgers" "Brasileira" "Mexicana"
+# Status permitidos para as corridas
+SADD corridas:status "aguardando_motorista" "aceita" "em_andamento" "finalizada" "cancelada"
 
-# 3. Ranking de pratos mais pedidos para a home do app (Estrutura: Sorted Set)
-ZADD ranking:pratos:pedidos 250 "Combo Sashimi"
-ZADD ranking:pratos:pedidos 190 "Pizza Margherita"
-ZADD ranking:pratos:pedidos 140 "Classic Burger"
-ZADD ranking:pratos:pedidos 85 "Prato Feito Mineiro"
-ZADD ranking:pratos:pedidos 60 "Taco de Carne"
-
-# 4. Contador inicial de acessos (Estrutura: String/Integer)
-SET stats:visitas:total 1000
+# Contador inicial apenas para exemplo de uso do Redis
+SET stats:corridas:consultas 0

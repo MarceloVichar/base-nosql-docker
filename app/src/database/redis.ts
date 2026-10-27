@@ -10,7 +10,10 @@ let redisClient: Redis | null = null;
 export function getRedisClient(): Redis {
   if (!redisClient) {
     redisClient = new Redis(redisUrl, {
-      maxRetriesPerRequest: 3,
+      maxRetriesPerRequest: 1,
+      connectTimeout: 2000,
+      commandTimeout: 2000,
+      enableOfflineQueue: false,
       retryStrategy(times) {
         const delay = Math.min(times * 200, 2000);
         return delay;
@@ -30,6 +33,15 @@ export function getRedisClient(): Redis {
 
 export async function connectRedis(): Promise<Redis> {
   const client = getRedisClient();
+  if (client.status !== "ready") {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => { limpar(); reject(new Error("Timeout Redis")); }, 5000);
+      const pronto = () => { limpar(); resolve(); };
+      const falhou = (erro: Error) => { limpar(); reject(erro); };
+      const limpar = () => { clearTimeout(timer); client.off("ready", pronto); client.off("error", falhou); };
+      client.once("ready", pronto); client.once("error", falhou);
+    });
+  }
   await client.ping();
   return client;
 }
