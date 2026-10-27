@@ -1,0 +1,17 @@
+{
+  "_comentario": "Coordenadas fictícias em Guarapuava-PR. Formato: [longitude, latitude], a mesma ordem do GeoJSON (MongoDB) e do GEOADD (Redis).",
+  "restaurantes": {
+    "Taco Loco": [-51.4648, -25.3872],
+    "Pizzaria Napoli": [-51.4566, -25.3928],
+    "Sushi Kazu": [-51.4532, -25.3968],
+    "Sabor Mineiro": [-51.4712, -25.3982],
+    "Burger House": [-51.4508, -25.4075]
+  },
+  "entregadores": {
+    "Carlos": [-51.4571, -25.3934],
+    "Diego": [-51.4603, -25.3887],
+    "Elisa": [-51.4689, -25.3996],
+    "Fabio": [-51.4410, -25.4170],
+    "Gabi": [-51.4706, -25.3846]
+  }
+}

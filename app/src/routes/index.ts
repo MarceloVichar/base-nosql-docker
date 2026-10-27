@@ -6,6 +6,7 @@ import pedidosRoutes from "./pedidos.routes.js";
 import estruturasRedisRoutes from "./estruturas-redis.routes.js";
 import buscaRoutes from "./busca.routes.js";
 import pratosRoutes from "./pratos.routes.js";
+import pertoRoutes from "./perto.routes.js";
 import { getDb } from "../database/mongo.js";
 import { getRedisClient } from "../database/redis.js";
 import { getElasticClient } from "../database/elastic.js";
@@ -70,6 +71,9 @@ routes.use("/busca", buscaRoutes);
 
 // Rotas do Módulo 08 — Integração entre bancos e sincronização
 routes.use("/pratos", pratosRoutes);
+
+// Rotas do Módulo 09 — Dados geográficos: o que está perto de mim
+routes.use("/perto", pertoRoutes);
 
 export default routes;
 

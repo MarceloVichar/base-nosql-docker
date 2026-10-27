@@ -8,7 +8,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed:elastic": "tsx src/scripts/seed-elastic.ts"
+    "seed:elastic": "tsx src/scripts/seed-elastic.ts",
+    "seed:geo": "tsx src/scripts/seed-geo.ts"
   },
   "keywords": ["nosql", "mongodb", "redis", "elasticsearch", "utfpr"],
   "author": "Prof. Marcelo Vichar",

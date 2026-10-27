@@ -33,7 +33,8 @@
       "categoria": { "type": "keyword" },
       "alergenos": { "type": "keyword" },
       "preco": { "type": "float" },
-      "disponivel": { "type": "boolean" }
+      "disponivel": { "type": "boolean" },
+      "localizacao": { "type": "geo_point" }
     }
   }
 }

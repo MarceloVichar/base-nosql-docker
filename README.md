@@ -168,6 +168,17 @@ O cardápio tem o MongoDB como fonte da verdade, uma cópia com TTL no Redis e u
 
 ---
 
+## 📍 Dados Geográficos (Módulo 09)
+
+Restaurantes e entregadores têm coordenadas em `init/geo-init.json`, carregadas pelo `./iniciar.sh` (`npm run seed:geo`).
+
+- **Roteiro de demonstração:** [`DEMO_GEO.md`](DEMO_GEO.md)
+- **Restaurantes perto (MongoDB):** `curl 'http://localhost:3400/api/perto/restaurantes?raio_km=1'`
+- **Entregadores perto (Redis):** `curl 'http://localhost:3400/api/perto/entregadores?lat=-25.3928&lon=-51.4566&raio_km=1'`
+- **Prato perto (ElasticSearch):** `curl 'http://localhost:3400/api/perto/pratos?q=frango&raio_km=1.5'`
+
+---
+
 ## 🛠️ Comandos de Manutenção
 
 - **Ver logs da aplicação em tempo real:**

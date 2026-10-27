@@ -25,11 +25,14 @@ function getElasticInitConfig() {
  * Monta o documento do índice "pratos" a partir de um prato do MongoDB.
  * Usado pela carga completa (abaixo) e pela sincronização de um único prato (Módulo 08).
  */
-export function montarDocumentoBusca(prato: any, restauranteNome: string) {
+export function montarDocumentoBusca(prato: any, restaurante: any) {
+  // Módulo 09: o prato herda a localização do restaurante ([lon, lat] no MongoDB)
+  const coordenadas = restaurante?.localizacao?.coordinates;
   return {
     prato_id: prato._id.toString(),
     restaurante_id: prato.restaurante_id ? prato.restaurante_id.toString() : null,
-    restaurante_nome: restauranteNome,
+    restaurante_nome: restaurante?.nome || "Desconhecido",
+    localizacao: coordenadas ? { lat: coordenadas[1], lon: coordenadas[0] } : null,
     nome: prato.nome,
     descricao: prato.descricao,
     categoria: prato.categoria,
@@ -70,20 +73,20 @@ export async function seedElasticsearch(keepConnectionsOpen = false) {
   const pratos = await colCardapio.find().toArray();
   const restaurantes = await colRestaurantes.find().toArray();
 
-  const restMap = new Map<string, string>();
+  const restMap = new Map<string, any>();
   for (const r of restaurantes) {
-    restMap.set(r._id.toString(), r.nome);
+    restMap.set(r._id.toString(), r);
   }
 
   // 3. Indexa prato por prato
   let count = 0;
   for (const prato of pratos) {
-    const restNome = prato.restaurante_id ? restMap.get(prato.restaurante_id.toString()) || "Desconhecido" : "Desconhecido";
+    const restaurante = prato.restaurante_id ? restMap.get(prato.restaurante_id.toString()) : null;
 
     await elastic.index({
       index: indexName,
       id: prato._id.toString(),
-      document: montarDocumentoBusca(prato, restNome),
+      document: montarDocumentoBusca(prato, restaurante),
     });
     count++;
   }

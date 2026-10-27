@@ -28,7 +28,7 @@ async function indexarPrato(prato: any) {
   await getElasticClient().index({
     index: INDICE,
     id: prato._id.toString(),
-    document: montarDocumentoBusca(prato, restaurante?.nome || "Desconhecido"),
+    document: montarDocumentoBusca(prato, restaurante),
     refresh: "wait_for",
   });
 }
