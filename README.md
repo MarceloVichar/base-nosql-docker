@@ -179,6 +179,38 @@ Restaurantes e entregadores têm coordenadas em `init/geo-init.json`, carregadas
 
 ---
 
+## 🌐 Escalabilidade e Distribuição (Módulo 10)
+
+Um ambiente à parte, com o MongoDB em três nós (replica set `gastrohub-rs`), o Redis com uma réplica e, opcionalmente, o MongoDB dividido em dois shards, para provocar falhas de propósito. A API ganha as rotas `/api/resiliente`, que continuam respondendo com o Redis ou o ElasticSearch fora do ar.
+
+- **Roteiro de demonstração:** [`DEMO_DISTRIBUICAO.md`](DEMO_DISTRIBUICAO.md)
+- **Subir:** `./distribuido.sh subir` (portas 27041-27043, 6341 e 6342)
+- **Subir com sharding:** `./distribuido.sh sharding` (roteador `mongos` na porta 27044)
+- **Ver quem é primário:** `./distribuido.sh status`
+- **Derrubar:** `./distribuido.sh parar`
+- **Leitura que aguenta o Redis fora:** `curl 'http://localhost:3400/api/resiliente/pratos/Prato%20Feito'`
+- **Busca que aguenta o ElasticSearch fora:** `curl 'http://localhost:3400/api/resiliente/busca?q=frango'`
+
+---
+
+## 🌿 Branches do Repositório
+
+| Branch | O que tem |
+| :--- | :--- |
+| `main` | Ambiente inicial (template), usado para o fork das equipes no começo do semestre |
+| `modulo-NN` | Estado do repositório ao final do Módulo NN; cada módulo sai do anterior |
+| `develop` | **Sempre com o conteúdo de todos os módulos já publicados** (igual ao último `modulo-NN`) |
+
+Ao publicar um módulo novo:
+
+1. Criar `modulo-NN` a partir de `modulo-(NN-1)` e fazer os commits do módulo nela.
+2. Enviar a branch: `git push -u origin modulo-NN`.
+3. Atualizar a `develop` com o módulo: `git switch develop && git merge --ff-only modulo-NN && git push origin develop`.
+
+A `main` não recebe os módulos. Branches de outros nomes (correções enviadas às equipes) não entram nesse fluxo.
+
+---
+
 ## 🛠️ Comandos de Manutenção
 
 - **Ver logs da aplicação em tempo real:**

@@ -7,6 +7,7 @@ import estruturasRedisRoutes from "./estruturas-redis.routes.js";
 import buscaRoutes from "./busca.routes.js";
 import pratosRoutes from "./pratos.routes.js";
 import pertoRoutes from "./perto.routes.js";
+import resilienciaRoutes from "./resiliencia.routes.js";
 import { getDb } from "../database/mongo.js";
 import { getRedisClient } from "../database/redis.js";
 import { getElasticClient } from "../database/elastic.js";
@@ -74,6 +75,9 @@ routes.use("/pratos", pratosRoutes);
 
 // Rotas do Módulo 09 — Dados geográficos: o que está perto de mim
 routes.use("/perto", pertoRoutes);
+
+// Rotas do Módulo 10 — A aplicação continua no ar quando um banco cai
+routes.use("/resiliente", resilienciaRoutes);
 
 export default routes;
 

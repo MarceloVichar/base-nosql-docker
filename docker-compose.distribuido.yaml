@@ -1,0 +1,103 @@
+# ── AMBIENTE DISTRIBUÍDO (MÓDULO 10) ──────────────────────────────────────────
+# Sobe ao lado do ambiente principal, sem mexer nele:
+#   - MongoDB com 3 nós (replica set "gastrohub-rs");
+#   - Redis com um principal e uma réplica;
+#   - perfil "sharding": MongoDB dividido em dois shards, com servidor de
+#     configuração e roteador (mongos). Só sobe com ./distribuido.sh sharding.
+# Use ./distribuido.sh subir | sharding | status | parar | reset.
+name: nosql-distribuido
+
+services:
+  # ── MONGODB: REPLICA SET COM 3 NÓS ─────────────────────────────────────────
+  mongo-a:
+    image: mongo:7
+    container_name: nosql_mongo_a
+    hostname: mongo-a
+    command: ["mongod", "--replSet", "gastrohub-rs", "--bind_ip_all"]
+    ports:
+      - "27041:27017"
+    networks: [distribuido]
+
+  mongo-b:
+    image: mongo:7
+    container_name: nosql_mongo_b
+    hostname: mongo-b
+    command: ["mongod", "--replSet", "gastrohub-rs", "--bind_ip_all"]
+    ports:
+      - "27042:27017"
+    networks: [distribuido]
+
+  mongo-c:
+    image: mongo:7
+    container_name: nosql_mongo_c
+    hostname: mongo-c
+    command: ["mongod", "--replSet", "gastrohub-rs", "--bind_ip_all"]
+    ports:
+      - "27043:27017"
+    networks: [distribuido]
+
+  # ── REDIS: PRINCIPAL E RÉPLICA ─────────────────────────────────────────────
+  redis-principal:
+    image: redis:7-alpine
+    container_name: nosql_redis_principal
+    hostname: redis-principal
+    ports:
+      - "6341:6379"
+    networks: [distribuido]
+
+  redis-replica:
+    image: redis:7-alpine
+    container_name: nosql_redis_replica
+    hostname: redis-replica
+    command: ["redis-server", "--replicaof", "redis-principal", "6379"]
+    ports:
+      - "6342:6379"
+    depends_on:
+      - redis-principal
+    networks: [distribuido]
+
+  # ── MONGODB: SHARDING (PERFIL "sharding") ──────────────────────────────────
+  # Servidor de configuração: guarda qual faixa de dados está em qual shard.
+  mongo-config:
+    image: mongo:7
+    container_name: nosql_mongo_config
+    hostname: mongo-config
+    command: ["mongod", "--configsvr", "--replSet", "config-rs", "--port", "27017", "--bind_ip_all"]
+    profiles: [sharding]
+    networks: [distribuido]
+
+  # Cada shard guarda uma parte dos dados.
+  mongo-shard-1:
+    image: mongo:7
+    container_name: nosql_mongo_shard_1
+    hostname: mongo-shard-1
+    command: ["mongod", "--shardsvr", "--replSet", "shard-1", "--port", "27017", "--bind_ip_all"]
+    profiles: [sharding]
+    networks: [distribuido]
+
+  mongo-shard-2:
+    image: mongo:7
+    container_name: nosql_mongo_shard_2
+    hostname: mongo-shard-2
+    command: ["mongod", "--shardsvr", "--replSet", "shard-2", "--port", "27017", "--bind_ip_all"]
+    profiles: [sharding]
+    networks: [distribuido]
+
+  # Roteador: a aplicação conversa só com ele, como se fosse um MongoDB comum.
+  mongo-roteador:
+    image: mongo:7
+    container_name: nosql_mongo_roteador
+    hostname: mongo-roteador
+    command: ["mongos", "--configdb", "config-rs/mongo-config:27017", "--port", "27017", "--bind_ip_all"]
+    ports:
+      - "27044:27017"
+    depends_on:
+      - mongo-config
+      - mongo-shard-1
+      - mongo-shard-2
+    profiles: [sharding]
+    networks: [distribuido]
+
+networks:
+  distribuido:
+    name: nosql_distribuido
