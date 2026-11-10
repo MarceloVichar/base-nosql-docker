@@ -8,6 +8,7 @@ import buscaRoutes from "./busca.routes.js";
 import pratosRoutes from "./pratos.routes.js";
 import pertoRoutes from "./perto.routes.js";
 import resilienciaRoutes from "./resiliencia.routes.js";
+import desempenhoRoutes from "./desempenho.routes.js";
 import { getDb } from "../database/mongo.js";
 import { getRedisClient } from "../database/redis.js";
 import { getElasticClient } from "../database/elastic.js";
@@ -78,6 +79,9 @@ routes.use("/perto", pertoRoutes);
 
 // Rotas do Módulo 10 — A aplicação continua no ar quando um banco cai
 routes.use("/resiliente", resilienciaRoutes);
+
+// Rotas do Módulo 11 — Performance e otimização
+routes.use("/desempenho", desempenhoRoutes);
 
 export default routes;
 

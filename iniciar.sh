@@ -63,6 +63,7 @@ INDICE_OK=0
 for i in {1..40}; do
     if curl -s -f http://localhost:9234 >/dev/null 2>&1 \
         && docker exec nosql_app npm run seed:geo >/dev/null 2>&1 \
+        && docker exec nosql_app npm run seed:pedidos >/dev/null 2>&1 \
         && docker exec nosql_app npm run seed:elastic >/dev/null 2>&1; then
         INDICE_OK=1
         break
@@ -73,7 +74,7 @@ if [[ "$INDICE_OK" == "1" ]]; then
     echo -e "${GREEN}Índice de busca criado a partir dos dados do MongoDB.${NC}"
 else
     echo -e "${YELLOW}[AVISO] Não foi possível criar o índice de busca agora. Com o ambiente no ar, rode:${NC}"
-    echo -e "${YELLOW}        docker exec nosql_app npm run seed:geo && docker exec nosql_app npm run seed:elastic${NC}"
+    echo -e "${YELLOW}        docker exec nosql_app npm run seed:geo && docker exec nosql_app npm run seed:pedidos && docker exec nosql_app npm run seed:elastic${NC}"
 fi
 
 echo ""

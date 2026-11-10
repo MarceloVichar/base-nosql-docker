@@ -9,7 +9,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "seed:elastic": "tsx src/scripts/seed-elastic.ts",
-    "seed:geo": "tsx src/scripts/seed-geo.ts"
+    "seed:geo": "tsx src/scripts/seed-geo.ts",
+    "seed:pedidos": "tsx src/scripts/seed-pedidos.ts",
+    "benchmark": "tsx src/scripts/benchmark.ts"
   },
   "keywords": ["nosql", "mongodb", "redis", "elasticsearch", "utfpr"],
   "author": "Prof. Marcelo Vichar",

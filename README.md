@@ -193,6 +193,17 @@ Um ambiente à parte, com o MongoDB em três nós (replica set `gastrohub-rs`), 
 
 ---
 
+## ⚡ Performance e Otimização (Módulo 11)
+
+A coleção `pedidos_historico` recebe 200 mil pedidos (`npm run seed:pedidos`, chamado pelo `./iniciar.sh`), sem índices, para medir o efeito do índice e do cache na tela "Meus pedidos".
+
+- **Roteiro de demonstração:** [`DEMO_DESEMPENHO.md`](DEMO_DESEMPENHO.md)
+- **Meus pedidos (MongoDB):** `curl 'http://localhost:3400/api/desempenho/pedidos?cliente=Ana%20Silva'`
+- **Meus pedidos com cache:** `curl 'http://localhost:3400/api/desempenho/pedidos-com-cache?cliente=Ana%20Silva'`
+- **Benchmark de uma rota:** `docker exec nosql_app npm run benchmark -- "<url>" 500 10`
+
+---
+
 ## 🌿 Branches do Repositório
 
 | Branch | O que tem |
