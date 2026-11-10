@@ -13,12 +13,15 @@ const SOBRENOMES = ["Silva", "Costa", "Mendes", "Souza", "Oliveira", "Pereira", 
   "Farias", "Duarte", "Rezende", "Antunes", "Fonseca", "Prado", "Siqueira", "Xavier", "Leite", "Melo"];
 const RESTAURANTES = ["Sushi Kazu", "Pizzaria Napoli", "Burger House", "Sabor Mineiro", "Taco Loco"];
 
-// Gerador de números com semente fixa: a carga é sempre a mesma, em qualquer máquina.
+// Gerador de números com semente fixa (mulberry32): a carga é sempre a mesma, em qualquer máquina.
 function sorteador(semente: number) {
-  let estado = semente;
+  let estado = semente >>> 0;
   return () => {
-    estado = (estado * 1103515245 + 12345) % 2147483648;
-    return estado / 2147483648;
+    estado = (estado + 0x6d2b79f5) >>> 0;
+    let t = estado;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 

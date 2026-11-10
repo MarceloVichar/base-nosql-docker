@@ -39,11 +39,11 @@ db.pedidos_historico.findOne({}, { _id: 0 });
 200000 pedidos
 {
   numero: 1,
-  cliente: 'João Oliveira',
-  restaurante: 'Sushi Kazu',
+  cliente: 'Heitor Machado',
+  restaurante: 'Sabor Mineiro',
   status: 'entregue',
-  valor: 24.48,
-  data: ISODate('2026-06-23T10:17:50.854Z')
+  valor: 81.85,
+  data: ISODate('2025-12-26T13:58:25.289Z')
 }
 ```
 
@@ -67,7 +67,7 @@ No resultado do `explain`, procure em `executionStats` os campos `totalDocsExami
 etapas      COLLSCAN → SORT
 examinados  200000 documentos
 devolvidos  10
-tempo       26 ms
+tempo       29 ms
 ```
 
 `COLLSCAN` é a leitura da coleção inteira; `SORT` é a ordenação feita na memória. Para devolver 10 pedidos, o banco examinou 200 mil.
@@ -84,12 +84,12 @@ Repita o mesmo `explain`:
 
 ```
 etapas      IXSCAN → FETCH → SORT
-examinados  271 documentos
+examinados  237 documentos
 devolvidos  10
 tempo       1 ms
 ```
 
-Achou os 271 pedidos da Ana pelo índice (`IXSCAN`), mas ainda ordenou na memória (`SORT`). Agora o índice com os dois campos, na ordem filtro e depois ordenação:
+Achou os 237 pedidos da Ana pelo índice (`IXSCAN`), mas ainda ordenou na memória (`SORT`). Agora o índice com os dois campos, na ordem filtro e depois ordenação:
 
 ```js
 db.pedidos_historico.createIndex({ cliente: 1, data: -1 })
@@ -99,7 +99,7 @@ db.pedidos_historico.createIndex({ cliente: 1, data: -1 })
 etapas      IXSCAN → FETCH → LIMIT
 examinados  10 documentos
 devolvidos  10
-tempo       2 ms
+tempo       1 ms
 ```
 
 Os pedidos da Ana já estão em ordem de data dentro do índice: o banco examina só 10 documentos e não precisa ordenar.
@@ -120,8 +120,8 @@ const plano = db.pedidos_historico
 ```
 etapas      COLLSCAN
 examinados  200000 documentos
-devolvidos  3111
-tempo       29 ms
+devolvidos  2730
+tempo       31 ms
 ```
 
 O índice só ajuda quando a consulta usa o **primeiro campo** dele (regra do prefixo). Como uma lista telefônica ordenada por sobrenome, que não ajuda a achar alguém pelo primeiro nome.
@@ -150,8 +150,8 @@ print(sem, com)
 ```
 
 ```
-só o _id     155 ms para gravar 50 mil pedidos
-6 índices    365 ms para gravar 50 mil pedidos
+só o _id     184 ms para gravar 50 mil pedidos
+6 índices    459 ms para gravar 50 mil pedidos
 ```
 
 Cada pedido gravado precisa entrar em todos os índices. Índice para as consultas frequentes e lentas, não para todos os campos.
@@ -165,46 +165,46 @@ O script de benchmark dispara várias requisições, algumas ao mesmo tempo, e m
 Apague os índices (`db.pedidos_historico.dropIndexes()`) e meça a rota que lê direto do MongoDB:
 
 ```bash
-docker exec nosql_app npm run benchmark -- "http://localhost:3400/api/desempenho/pedidos?cliente=Ana Silva" 500 10
+docker exec nosql_app npm run benchmark -- "http://localhost:3400/api/desempenho/pedidos?cliente=Ana Silva" 1000 10
 ```
 
 ```
-requisições  500 (10 ao mesmo tempo), 0 com erro
-vazão        255 requisições por segundo
-latência     média 38.5 ms
-             p50 36.5 ms · p95 52.1 ms · p99 74.6 ms
+requisições  1000 (10 ao mesmo tempo), 0 com erro
+vazão        153 requisições por segundo
+latência     média 64.9 ms
+             p50 61.0 ms · p95 102.7 ms · p99 136.2 ms
 ```
 
 Crie o índice composto e meça de novo:
 
 ```
-requisições  500 (10 ao mesmo tempo), 0 com erro
-vazão        5400 requisições por segundo
-latência     média 1.4 ms
-             p50 1.0 ms · p95 2.5 ms · p99 11.2 ms
+requisições  1000 (10 ao mesmo tempo), 0 com erro
+vazão        2759 requisições por segundo
+latência     média 3.5 ms
+             p50 2.8 ms · p95 8.2 ms · p99 13.4 ms
 ```
 
 Compare com a rota com cache no Redis (`/api/desempenho/pedidos-com-cache`), sem índice e com índice:
 
 ```
 sem índice, com cache
-requisições  500 (10 ao mesmo tempo), 0 com erro
-vazão        3920 requisições por segundo
-latência     média 2.1 ms
-             p50 0.7 ms · p95 1.4 ms · p99 64.1 ms
+requisições  1000 (10 ao mesmo tempo), 0 com erro
+vazão        1291 requisições por segundo
+latência     média 7.5 ms
+             p50 5.5 ms · p95 14.0 ms · p99 34.2 ms
 
 com índice e com cache
-requisições  500 (10 ao mesmo tempo), 0 com erro
-vazão        4860 requisições por segundo
-latência     média 1.6 ms
-             p50 0.8 ms · p95 2.5 ms · p99 32.5 ms
+requisições  1000 (10 ao mesmo tempo), 0 com erro
+vazão        3827 requisições por segundo
+latência     média 2.5 ms
+             p50 2.1 ms · p95 4.0 ms · p99 10.1 ms
 ```
 
-- **O índice resolveu:** a vazão subiu mais de 15 vezes e o p95 caiu de dezenas de milissegundos para poucos.
-- **Só o cache** também acelera, mas a primeira requisição de cada cliente (e cada vez que o TTL vence) ainda paga a consulta lenta: veja o p99.
-- **Índice e cache juntos** ficam no mesmo patamar do índice sozinho.
+- **O índice resolveu a causa:** a vazão ficou cerca de 18 vezes maior, e o p95 caiu de cerca de 100 ms para menos de 10 ms.
+- **Só o cache** acelera, mas rende menos que o índice: a primeira requisição de cada cliente, e cada vez que o TTL vence, ainda paga a consulta lenta.
+- **Índice e cache juntos** rendem um pouco mais, porque o Redis responde sem consultar o MongoDB.
 
-> Os números variam de máquina para máquina e entre execuções. Compare sempre versões medidas na mesma máquina, do mesmo jeito.
+> A medida oscila de uma rodada para outra e de máquina para máquina. Rode cada benchmark mais de uma vez e compare versões medidas na mesma máquina, do mesmo jeito.
 
 ---
 

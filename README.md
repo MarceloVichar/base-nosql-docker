@@ -200,7 +200,7 @@ A coleção `pedidos_historico` recebe 200 mil pedidos (`npm run seed:pedidos`, 
 - **Roteiro de demonstração:** [`DEMO_DESEMPENHO.md`](DEMO_DESEMPENHO.md)
 - **Meus pedidos (MongoDB):** `curl 'http://localhost:3400/api/desempenho/pedidos?cliente=Ana%20Silva'`
 - **Meus pedidos com cache:** `curl 'http://localhost:3400/api/desempenho/pedidos-com-cache?cliente=Ana%20Silva'`
-- **Benchmark de uma rota:** `docker exec nosql_app npm run benchmark -- "<url>" 500 10`
+- **Benchmark de uma rota:** `docker exec nosql_app npm run benchmark -- "<url>" 1000 10`
 
 ---
 
