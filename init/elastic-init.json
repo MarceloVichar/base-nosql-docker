@@ -35,7 +35,8 @@
       "estoque": { "type": "integer" },
       "avaliacao_media": { "type": "float" },
       "disponivel": { "type": "boolean" },
-      "data_criacao": { "type": "date" }
+      "data_criacao": { "type": "date" },
+      "localizacao": { "type": "geo_point" }
     }
   }
 }

@@ -2,7 +2,8 @@ import { Request, Response } from "express";
 import { ObjectId } from "mongodb";
 import { getCollection } from "../database/mongo.js";
 import { getElasticClient } from "../database/elastic.js";
-import { cacheGet, cacheSet, listPush, listPop, listLen, listRange } from "../database/redis.js";
+import { listPush, listPop, listLen, listRange } from "../database/redis.js";
+import { cacheGetSeguro, cacheSetSeguro, ORIGEM_SEM_REDIS } from "../services/resiliencia.js";
 import {
   chaveProduto,
   chaveRecentes,
@@ -17,7 +18,7 @@ import {
   TTL_DETALHES,
   TTL_VENDEDOR,
 } from "../services/cache-produtos.js";
-import { INDICE, montarDocumentoBusca, nomeDoVendedor } from "../scripts/seed-elastic.js";
+import { INDICE, montarDocumentoBusca, dadosDoVendedor } from "../scripts/seed-elastic.js";
 
 /** Pipeline de detalhe do produto: traz o vendedor junto, em uma única leitura. */
 function pipelineDetalhe(id: ObjectId) {
@@ -50,11 +51,11 @@ async function sincronizarElastic(produtoId: string, produto: any | null): Promi
     return;
   }
 
-  const vendedorNome = await nomeDoVendedor(produto.vendedor_id);
+  const vendedor = await dadosDoVendedor(produto.vendedor_id);
   await elastic.index({
     index: INDICE,
     id: produtoId,
-    document: montarDocumentoBusca(produto, vendedorNome),
+    document: montarDocumentoBusca(produto, vendedor),
     refresh: "wait_for",
   });
 }
@@ -116,6 +117,8 @@ const pediuFalha = (req: Request) => req.query.simular_falha === "elastic";
  * Controller de Produtos do PopsMarket.
  *
  * Leituras: padrão cache-aside (Redis → MongoDB → grava com TTL).
+ *   Checkpoint 3: o cache é opcional. Com o Redis fora do ar, as leituras vão
+ *   direto ao MongoDB, sem erro e sem esperar; só a queda do MongoDB gera 503.
  * Escritas: MongoDB (fonte da verdade) → invalida o Redis → reindexa no ElasticSearch.
  */
 export class ProdutosController {
@@ -185,7 +188,7 @@ export class ProdutosController {
 
     try {
       // PASSO 1: tentar o cache
-      const emCache = await cacheGet<any[]>(chave);
+      const { redisNoAr, valor: emCache } = await cacheGetSeguro<any[]>(chave);
       if (emCache) {
         res.json({
           origem: "REDIS (CACHE HIT)",
@@ -204,19 +207,20 @@ export class ProdutosController {
         .limit(10)
         .toArray();
 
-      // PASSO 3: gravar no Redis com TTL
-      await cacheSet(chave, produtos, TTL_RECENTES);
+      // PASSO 3: gravar no Redis com TTL (só se o Redis estiver no ar)
+      if (redisNoAr) await cacheSetSeguro(chave, produtos, TTL_RECENTES);
 
       res.json({
-        origem: "MONGODB (CACHE MISS)",
+        origem: redisNoAr ? "MONGODB (CACHE MISS)" : ORIGEM_SEM_REDIS,
         tempo_resposta: `${(performance.now() - t0).toFixed(2)} ms`,
         chave,
-        ttl_segundos: TTL_RECENTES,
+        ttl_segundos: redisNoAr ? TTL_RECENTES : null,
         total: produtos.length,
         dados: produtos,
       });
     } catch (err: any) {
-      res.status(500).json({ erro: "Erro ao listar produtos recentes", detalhe: err.message });
+      // Só chega aqui se o MongoDB, a fonte da verdade, falhar.
+      res.status(503).json({ erro: "Catálogo indisponível no momento. Tente novamente em instantes.", detalhe: err.message });
     }
   }
 
@@ -230,7 +234,7 @@ export class ProdutosController {
     const chave = chaveCategoria(categoria);
 
     try {
-      const emCache = await cacheGet<any[]>(chave);
+      const { redisNoAr, valor: emCache } = await cacheGetSeguro<any[]>(chave);
       if (emCache) {
         res.json({
           origem: "REDIS (CACHE HIT)",
@@ -248,19 +252,19 @@ export class ProdutosController {
         .sort({ preco: 1 })
         .toArray();
 
-      await cacheSet(chave, produtos, TTL_CATEGORIA);
+      if (redisNoAr) await cacheSetSeguro(chave, produtos, TTL_CATEGORIA);
 
       res.json({
-        origem: "MONGODB (CACHE MISS)",
+        origem: redisNoAr ? "MONGODB (CACHE MISS)" : ORIGEM_SEM_REDIS,
         tempo_resposta: `${(performance.now() - t0).toFixed(2)} ms`,
         chave,
-        ttl_segundos: TTL_CATEGORIA,
+        ttl_segundos: redisNoAr ? TTL_CATEGORIA : null,
         categoria,
         total: produtos.length,
         dados: produtos,
       });
     } catch (err: any) {
-      res.status(500).json({ erro: "Erro ao listar a vitrine da categoria", detalhe: err.message });
+      res.status(503).json({ erro: "Catálogo indisponível no momento. Tente novamente em instantes.", detalhe: err.message });
     }
   }
 
@@ -282,7 +286,7 @@ export class ProdutosController {
       const chave = chaveProduto(id);
 
       // PASSO 1: tentar o cache
-      const emCache = await cacheGet<any>(chave);
+      const { redisNoAr, valor: emCache } = await cacheGetSeguro<any>(chave);
       if (emCache) {
         res.json({
           origem: "REDIS (CACHE HIT)",
@@ -303,18 +307,20 @@ export class ProdutosController {
         return;
       }
 
-      // PASSO 3: gravar no Redis com TTL
-      await cacheSet(chave, resultado[0], TTL_DETALHES);
+      // PASSO 3: gravar no Redis com TTL. Gravar é um extra: com o Redis fora
+      // do ar, o cliente recebe o produto do mesmo jeito, direto do MongoDB.
+      if (redisNoAr) await cacheSetSeguro(chave, resultado[0], TTL_DETALHES);
 
       res.json({
-        origem: "MONGODB (CACHE MISS)",
+        origem: redisNoAr ? "MONGODB (CACHE MISS)" : ORIGEM_SEM_REDIS,
         tempo_resposta: `${(performance.now() - t0).toFixed(2)} ms`,
         chave,
-        ttl_segundos: TTL_DETALHES,
+        ttl_segundos: redisNoAr ? TTL_DETALHES : null,
         dados: resultado[0],
       });
     } catch (err: any) {
-      res.status(500).json({ erro: "Erro ao detalhar produto", detalhe: err.message });
+      // Só chega aqui se o MongoDB, a fonte da verdade, falhar.
+      res.status(503).json({ erro: "Produto indisponível no momento. Tente novamente em instantes.", detalhe: err.message });
     }
   }
 
@@ -361,7 +367,7 @@ export class ProdutosController {
 
       const chave = chaveVendedor(vendedor_id);
 
-      const emCache = await cacheGet<any[]>(chave);
+      const { redisNoAr, valor: emCache } = await cacheGetSeguro<any[]>(chave);
       if (emCache) {
         res.json({
           origem: "REDIS (CACHE HIT)",
@@ -379,19 +385,19 @@ export class ProdutosController {
         .sort({ data_criacao: -1 })
         .toArray();
 
-      await cacheSet(chave, produtos, TTL_VENDEDOR);
+      if (redisNoAr) await cacheSetSeguro(chave, produtos, TTL_VENDEDOR);
 
       res.json({
-        origem: "MONGODB (CACHE MISS)",
+        origem: redisNoAr ? "MONGODB (CACHE MISS)" : ORIGEM_SEM_REDIS,
         tempo_resposta: `${(performance.now() - t0).toFixed(2)} ms`,
         chave,
-        ttl_segundos: TTL_VENDEDOR,
+        ttl_segundos: redisNoAr ? TTL_VENDEDOR : null,
         vendedor_id,
         total: produtos.length,
         dados: produtos,
       });
     } catch (err: any) {
-      res.status(500).json({ erro: "Erro ao listar os produtos do vendedor", detalhe: err.message });
+      res.status(503).json({ erro: "Painel do vendedor indisponível no momento. Tente novamente em instantes.", detalhe: err.message });
     }
   }
 

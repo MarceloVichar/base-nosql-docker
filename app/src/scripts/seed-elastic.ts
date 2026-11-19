@@ -37,7 +37,24 @@ function getElasticInitConfig() {
  * seed. O `_id` do ElasticSearch é sempre o `_id` do MongoDB em string: é isso
  * que permite atualizar um único documento do índice depois de um PATCH.
  */
-export function montarDocumentoBusca(produto: any, vendedorNome: string) {
+export interface VendedorBusca {
+  nome: string;
+  /** GeoJSON Point da loja ({ type: "Point", coordinates: [lon, lat] }) */
+  localizacao?: { type: string; coordinates: number[] } | null;
+}
+
+/**
+ * Converte o GeoJSON do MongoDB ([longitude, latitude]) no geo_point do
+ * ElasticSearch ({ lat, lon }). Explicitar os nomes evita trocar a ordem.
+ */
+function paraGeoPoint(localizacao: VendedorBusca["localizacao"]) {
+  if (!localizacao?.coordinates) return null;
+  const [lon, lat] = localizacao.coordinates;
+  return { lat, lon };
+}
+
+export function montarDocumentoBusca(produto: any, vendedor: VendedorBusca) {
+  const vendedorNome = vendedor.nome;
   return {
     produto_id: produto._id.toString(),
     vendedor_id: produto.vendedor_id ? produto.vendedor_id.toString() : null,
@@ -54,6 +71,9 @@ export function montarDocumentoBusca(produto: any, vendedorNome: string) {
     avaliacao_media: produto.avaliacao?.media ?? 0,
     disponivel: produto.disponivel !== false,
     data_criacao: produto.data_criacao ?? null,
+    // Checkpoint 3: a posição da loja do vendedor é copiada para o produto,
+    // para a busca "produto X perto de mim" (geo_distance) não precisar de JOIN.
+    localizacao: paraGeoPoint(vendedor.localizacao),
   };
 }
 
@@ -94,22 +114,22 @@ export async function seedElasticsearch(keepConnectionsOpen = false): Promise<nu
 
   // O nome do vendedor é desnormalizado dentro de cada produto do índice: o
   // ElasticSearch não faz JOIN, e o cliente procura o produto também pelo nome da loja.
-  const mapaVendedores = new Map<string, string>();
+  const mapaVendedores = new Map<string, VendedorBusca>();
   for (const v of vendedores) {
-    mapaVendedores.set(v._id.toString(), v.nome);
+    mapaVendedores.set(v._id.toString(), { nome: v.nome, localizacao: v.localizacao ?? null });
   }
 
   // 3. Indexa produto a produto
   let count = 0;
   for (const produto of produtos) {
-    const vendedorNome = produto.vendedor_id
-      ? mapaVendedores.get(produto.vendedor_id.toString()) ?? "Desconhecido"
-      : "Desconhecido";
+    const vendedor = (produto.vendedor_id && mapaVendedores.get(produto.vendedor_id.toString())) || {
+      nome: "Desconhecido",
+    };
 
     await elastic.index({
       index: INDICE,
       id: produto._id.toString(),
-      document: montarDocumentoBusca(produto, vendedorNome),
+      document: montarDocumentoBusca(produto, vendedor),
     });
     count++;
   }
@@ -126,13 +146,13 @@ export async function seedElasticsearch(keepConnectionsOpen = false): Promise<nu
 }
 
 /**
- * Busca no MongoDB o nome do vendedor de um produto, para indexar um documento
- * isolado nas rotas de escrita.
+ * Busca no MongoDB o nome e a localização da loja do vendedor de um produto,
+ * para indexar um documento isolado nas rotas de escrita.
  */
-export async function nomeDoVendedor(vendedorId: unknown): Promise<string> {
-  if (!vendedorId) return "Desconhecido";
+export async function dadosDoVendedor(vendedorId: unknown): Promise<VendedorBusca> {
+  if (!vendedorId) return { nome: "Desconhecido" };
   const vendedor = await getCollection("vendedores").findOne({ _id: vendedorId as any });
-  return vendedor?.nome ?? "Desconhecido";
+  return { nome: vendedor?.nome ?? "Desconhecido", localizacao: vendedor?.localizacao ?? null };
 }
 
 // Execução direta via CLI (npm run seed:elastic)

@@ -101,6 +101,21 @@ Para evitar conflitos com outros programas locais do Ubuntu, utilizamos portas d
 
 > A documentação completa da arquitetura está em [`CHECKPOINT_2.md`](CHECKPOINT_2.md).
 
+### 📍 Localização, resiliência e desempenho (Checkpoint 3)
+
+| Rota | Descrição |
+| :--- | :--- |
+| `GET /api/perto/lojas?lat=&lon=&raio_km=` | Lojas ativas no raio, da mais perto para a mais longe (MongoDB, `$geoNear` + 2dsphere) |
+| `GET /api/perto/entregadores?lat=&lon=&raio_km=` | Entregadores no raio (Redis, `GEOSEARCH`) |
+| `PATCH /api/perto/entregadores/:nome` | Nova posição do entregador (Redis, `GEOADD`) |
+| `GET /api/perto/produtos?q=&lat=&lon=&raio_km=` | Produtos em lojas no raio, por distância (ElasticSearch, `geo_distance`) |
+| `POST /api/pedidos` | Fecha o pedido com `writeConcern: { w: "majority" }` |
+| `GET /api/clientes/:id/pedidos/historico` | "Meus pedidos": os 10 mais recentes entre 200 mil pedidos |
+
+As leituras com cache e a busca continuam respondendo com o Redis ou o ElasticSearch fora do ar. Scripts: `npm run seed:geo`, `npm run seed:carga`, `npm run explain -- <cliente_id>` e `npm run benchmark -- "<url>" 1000 10` (dentro do container `nosql_app`).
+
+> Roteiro completo, com as saídas esperadas, em [`CHECKPOINT_3.md`](CHECKPOINT_3.md).
+
 ---
 
 ## 🧑‍💻 Como Programar e Criar Novas Funções nas Aulas

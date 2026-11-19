@@ -1,0 +1,16 @@
+{
+  "_comentario": "Coordenadas fictícias em Guarapuava-PR. Formato: [longitude, latitude], a mesma ordem do GeoJSON (MongoDB) e do GEOADD (Redis).",
+  "lojas": {
+    "TechStore Guarapuava": [-51.4580, -25.3915],
+    "Casa & Conforto": [-51.4650, -25.3960],
+    "Moda Urbana": [-51.4510, -25.4020],
+    "EsporteTotal": [-51.4720, -25.3790]
+  },
+  "entregadores": {
+    "Carlos": [-51.4605, -25.3925],
+    "Diego": [-51.4590, -25.3870],
+    "Elisa": [-51.4689, -25.3996],
+    "Fabio": [-51.4410, -25.4170],
+    "Gabi": [-51.4806, -25.3746]
+  }
+}

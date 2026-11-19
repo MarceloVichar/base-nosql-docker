@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
+import { ObjectId } from "mongodb";
 import { getElasticClient } from "../database/elastic.js";
-import { cacheGet, cacheSet } from "../database/redis.js";
+import { getCollection } from "../database/mongo.js";
+import { cacheGetSeguro, cacheSetSeguro, comLimite, escaparRegex, LIMITE_ELASTIC_MS } from "../services/resiliencia.js";
 import { chaveBusca, TTL_BUSCA } from "../services/cache-produtos.js";
 import { INDICE, seedElasticsearch } from "../scripts/seed-elastic.js";
 
@@ -48,41 +50,48 @@ export class BuscaController {
    *
    * O resultado é memorizado no Redis por 5 minutos (cache-aside), porque uma
    * busca é a consulta mais cara do catálogo e o acervo muda poucas vezes ao dia.
+   *
+   * Checkpoint 3 — resiliência:
+   *  - Redis fora: pula o cache e consulta o ElasticSearch direto;
+   *  - ElasticSearch fora: busca simples no MongoDB ($regex), com aviso;
+   *  - MongoDB também fora: 503 com mensagem clara.
    */
   static async buscarProdutos(req: Request, res: Response): Promise<void> {
     const t0 = performance.now();
+    const termo = ((req.query.q as string) ?? "").trim();
+    const categoria = ((req.query.categoria as string) ?? "").trim();
+    const vendedorId = ((req.query.vendedor_id as string) ?? "").trim();
+    const precoMax = req.query.preco_max ? Number(req.query.preco_max) : null;
+    const temPrecoMax = precoMax !== null && !Number.isNaN(precoMax);
+    const filtrosAplicados = {
+      disponivel: true,
+      categoria: categoria || null,
+      vendedor_id: vendedorId || null,
+      preco_max: precoMax,
+    };
 
+    // ── PASSO 1: TENTAR O CACHE (REDIS) — opcional desde o Checkpoint 3 ─────
+    const assinatura = `${termo}|${categoria}|${vendedorId}|${precoMax ?? ""}`;
+    const chave = chaveBusca(assinatura);
+
+    const { redisNoAr, valor: emCache } = await cacheGetSeguro<any>(chave);
+    if (emCache) {
+      res.json({
+        origem: "REDIS (CACHE HIT)",
+        tempo_resposta: `${(performance.now() - t0).toFixed(2)} ms`,
+        chave,
+        ...emCache,
+      });
+      return;
+    }
+
+    // ── PASSO 2: CACHE MISS → CONSULTAR O ELASTICSEARCH ────────────────────
     try {
-      const termo = ((req.query.q as string) ?? "").trim();
-      const categoria = ((req.query.categoria as string) ?? "").trim();
-      const vendedorId = ((req.query.vendedor_id as string) ?? "").trim();
-      const precoMax = req.query.preco_max ? Number(req.query.preco_max) : null;
-
-      // ── PASSO 1: TENTAR O CACHE (REDIS) ────────────────────────────────────
-      const assinatura = `${termo}|${categoria}|${vendedorId}|${precoMax ?? ""}`;
-      const chave = chaveBusca(assinatura);
-
-      const emCache = await cacheGet<any>(chave);
-      if (emCache) {
-        res.json({
-          origem: "REDIS (CACHE HIT)",
-          tempo_resposta: `${(performance.now() - t0).toFixed(2)} ms`,
-          chave,
-          ...emCache,
-        });
-        return;
-      }
-
-      // ── PASSO 2: CACHE MISS → CONSULTAR O ELASTICSEARCH ────────────────────
-      const elastic = getElasticClient();
-
       // Filtros exatos: não pontuam, apenas decidem quais produtos entram.
       const filtros: any[] = [{ term: { disponivel: true } }];
       if (categoria) filtros.push({ term: { categorias: categoria } });
       if (vendedorId) filtros.push({ term: { vendedor_id: vendedorId } });
-      if (precoMax !== null && !Number.isNaN(precoMax)) {
-        filtros.push({ range: { preco: { lte: precoMax } } });
-      }
+      if (temPrecoMax) filtros.push({ range: { preco: { lte: precoMax } } });
 
       // Sem termo digitado a rota vira uma vitrine filtrada: match_all pontua
       // todo mundo igual e os filtros fazem o recorte.
@@ -90,38 +99,82 @@ export class BuscaController {
         ? { multi_match: { query: termo, fields: CAMPOS_BUSCA, fuzziness: "AUTO" } }
         : { match_all: {} };
 
-      const resposta = await elastic.search({
-        index: INDICE,
-        size: 20,
-        query: { bool: { must: consulta, filter: filtros } },
-      });
+      // Checkpoint 3: limite de tempo e nenhuma nova tentativa. Com o
+      // ElasticSearch fora do ar, desiste rápido e cai para o MongoDB.
+      // O comLimite cobre também a resolução de nome: com o container parado,
+      // o DNS do Docker demora ~5 s para dizer que "elasticsearch" não existe,
+      // e o requestTimeout do cliente não conta esse tempo.
+      const resposta = await comLimite(
+        getElasticClient().search(
+          { index: INDICE, size: 20, query: { bool: { must: consulta, filter: filtros } } },
+          { requestTimeout: LIMITE_ELASTIC_MS, maxRetries: 0 }
+        ),
+        LIMITE_ELASTIC_MS
+      );
 
       const corpo = {
         motor: "ELASTICSEARCH (multi_match + fuzziness + bool.filter)",
         termo: termo || null,
         campos_e_pesos: CAMPOS_BUSCA,
-        filtros_aplicados: {
-          disponivel: true,
-          categoria: categoria || null,
-          vendedor_id: vendedorId || null,
-          preco_max: precoMax,
-        },
+        filtros_aplicados: filtrosAplicados,
         total: resposta.hits.hits.length,
         resultados: resumir(resposta.hits.hits as any[]),
       };
 
-      // ── PASSO 3: GRAVAR NO CACHE COM TTL DE 300s ───────────────────────────
-      await cacheSet(chave, corpo, TTL_BUSCA);
+      // ── PASSO 3: GRAVAR NO CACHE COM TTL DE 300s (se o Redis estiver no ar)
+      if (redisNoAr) await cacheSetSeguro(chave, corpo, TTL_BUSCA);
 
       res.json({
-        origem: "ELASTICSEARCH (CACHE MISS)",
+        origem: redisNoAr ? "ELASTICSEARCH (CACHE MISS)" : "ELASTICSEARCH (REDIS FORA DO AR, SEM CACHE)",
         tempo_resposta: `${(performance.now() - t0).toFixed(2)} ms`,
         chave,
-        ttl_segundos: TTL_BUSCA,
+        ttl_segundos: redisNoAr ? TTL_BUSCA : null,
         ...corpo,
       });
+      return;
+    } catch {
+      // ElasticSearch fora do ar: segue para a busca simples no MongoDB.
+    }
+
+    // ── PLANO B: BUSCA SIMPLES NO MONGODB (FONTE DA VERDADE) ───────────────
+    // Sem relevância e sem tolerância a erro de digitação, mas o cliente
+    // continua encontrando os produtos. O resultado degradado NÃO vai para o
+    // cache: quando o ElasticSearch voltar, a próxima busca já é a completa.
+    try {
+      const filtro: Record<string, any> = { disponivel: true };
+      if (termo) {
+        const regex = { $regex: escaparRegex(termo), $options: "i" };
+        filtro.$or = [{ nome: regex }, { descricao: regex }];
+      }
+      if (categoria) filtro.categorias = categoria;
+      if (vendedorId && ObjectId.isValid(vendedorId)) filtro.vendedor_id = new ObjectId(vendedorId);
+      if (temPrecoMax) filtro.preco = { $lte: precoMax };
+
+      const produtos = await getCollection("produtos")
+        .find(filtro, { projection: { nome: 1, preco: 1, categorias: 1, disponivel: 1 } })
+        .sort({ nome: 1 })
+        .limit(20)
+        .toArray();
+
+      res.json({
+        origem: "MONGODB ($regex, ELASTICSEARCH FORA DO AR)",
+        aviso: "Busca simplificada: sem ordem por relevância e sem tolerância a erro de digitação.",
+        tempo_resposta: `${(performance.now() - t0).toFixed(2)} ms`,
+        termo: termo || null,
+        filtros_aplicados: filtrosAplicados,
+        total: produtos.length,
+        resultados: produtos.map((p) => ({
+          produto_id: p._id.toString(),
+          nome: p.nome,
+          preco: p.preco,
+          categorias: p.categorias,
+          disponivel: p.disponivel,
+          relevancia: null,
+        })),
+      });
     } catch (err: any) {
-      res.status(500).json({ erro: "Erro ao buscar produtos no ElasticSearch", detalhe: err.message });
+      // ElasticSearch e MongoDB fora: não há de onde responder.
+      res.status(503).json({ erro: "Busca indisponível no momento. Tente novamente em instantes.", detalhe: err.message });
     }
   }
 

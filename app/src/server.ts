@@ -5,6 +5,7 @@ import routes from "./routes/index.js";
 import { connectMongo, closeMongo } from "./database/mongo.js";
 import { connectRedis, closeRedis } from "./database/redis.js";
 import { connectElastic, closeElastic } from "./database/elastic.js";
+import { comLimite } from "./services/resiliencia.js";
 
 dotenv.config();
 
@@ -49,6 +50,14 @@ app.get("/", (req: Request, res: Response) => {
         analisar: "GET /api/busca/analisar?texto=",
         reindexar: "POST /api/busca/reindexar",
       },
+      localizacao: {
+        lojas_perto: "GET /api/perto/lojas?lat=&lon=&raio_km=",
+        entregadores_perto: "GET /api/perto/entregadores?lat=&lon=&raio_km=",
+        mover_entregador: "PATCH /api/perto/entregadores/:nome",
+        produtos_perto: "GET /api/perto/produtos?q=&lat=&lon=&raio_km=",
+      },
+      escrita_critica: "POST /api/pedidos",
+      desempenho: "GET /api/clientes/:id/pedidos/historico",
     },
     interfaces_web: {
       elasticvue: "http://localhost:8400",
@@ -74,13 +83,15 @@ async function bootstrap() {
   }
 
   try {
-    await connectRedis();
+    // Checkpoint 3: o Redis é opcional. Se estiver fora no startup, a API sobe
+    // mesmo assim (o ioredis segue tentando reconectar em segundo plano).
+    await comLimite(connectRedis(), 2000);
   } catch (err: any) {
     console.error(`[Redis] Erro na inicialização: ${err.message}`);
   }
 
   try {
-    await connectElastic();
+    await comLimite(connectElastic(), 3000);
   } catch (err: any) {
     console.warn(`[Elasticsearch] Aviso: Cluster não respondeu no startup (${err.message}).`);
   }

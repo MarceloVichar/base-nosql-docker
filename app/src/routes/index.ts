@@ -4,6 +4,9 @@ import clientesRoutes from "./clientes.routes.js";
 import vendedorRoutes from "./vendedor.routes.js";
 import buscaRoutes from "./busca.routes.js";
 import estruturasRedisRoutes from "./estruturas-redis.routes.js";
+import pertoRoutes from "./perto.routes.js";
+import pedidosRoutes from "./pedidos.routes.js";
+import { comLimite } from "../services/resiliencia.js";
 import { getDb } from "../database/mongo.js";
 import { getRedisClient } from "../database/redis.js";
 import { getElasticClient } from "../database/elastic.js";
@@ -21,7 +24,7 @@ routes.get("/health", async (req: Request, res: Response) => {
   // 1. Testar MongoDB
   try {
     const mongoDb = getDb();
-    await mongoDb.command({ ping: 1 });
+    await comLimite(mongoDb.command({ ping: 1 }), 2000);
     status.bancos.mongodb = { status: "ONLINE", database: mongoDb.databaseName };
   } catch (err: any) {
     status.bancos.mongodb = { status: "OFFLINE", erro: err.message };
@@ -31,7 +34,8 @@ routes.get("/health", async (req: Request, res: Response) => {
   // 2. Testar Redis
   try {
     const redis = getRedisClient();
-    const pong = await redis.ping();
+    if (redis.status !== "ready") throw new Error(`sem conexão (${redis.status})`);
+    const pong = await comLimite(redis.ping(), 1000);
     status.bancos.redis = { status: "ONLINE", resposta: pong };
   } catch (err: any) {
     status.bancos.redis = { status: "OFFLINE", erro: err.message };
@@ -41,7 +45,7 @@ routes.get("/health", async (req: Request, res: Response) => {
   // 3. Testar Elasticsearch
   try {
     const elastic = getElasticClient();
-    const health = await elastic.cluster.health({});
+    const health = await comLimite(elastic.cluster.health({}, { requestTimeout: 1500, maxRetries: 0 }), 1500);
     status.bancos.elasticsearch = { status: "ONLINE", cluster_status: health.status };
   } catch (err: any) {
     status.bancos.elasticsearch = { status: "OFFLINE", erro: err.message };
@@ -60,5 +64,9 @@ routes.use("/vendedor", vendedorRoutes);
 // Checkpoint 2 — busca textual (ElasticSearch) e estruturas de dados (Redis)
 routes.use("/busca", buscaRoutes);
 routes.use("/redis", estruturasRedisRoutes);
+
+// Checkpoint 3 — localização, escrita crítica (pedidos) e desempenho
+routes.use("/perto", pertoRoutes);
+routes.use("/pedidos", pedidosRoutes);
 
 export default routes;

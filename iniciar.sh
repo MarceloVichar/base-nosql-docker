@@ -57,26 +57,32 @@ if [[ -f "$SCRIPT_DIR/init/redis-init.commands" ]]; then
     done
 fi
 
-# ── Criar e popular o índice de busca no ElasticSearch ───────────────────────
-# A rubrica do Checkpoint 2 exige que o ambiente suba do zero com o índice
-# pronto, sem intervenção manual. O seed recria o índice a partir do mapping
-# declarativo init/elastic-init.json e o popula com a coleção produtos do MongoDB.
-echo -e "${CYAN}Criando e populando o índice 'produtos' no ElasticSearch...${NC}"
-INDICE_OK=0
+# ── Coordenadas, carga de teste e índice de busca ────────────────────────────
+# Tudo sem intervenção manual, nesta ordem (a ordem importa):
+#  1. seed:geo     → localização das lojas (GeoJSON) + índice 2dsphere no MongoDB
+#                    e posição dos entregadores no Redis (GEOADD)          [CP3]
+#  2. seed:carga   → 200 mil pedidos em pedidos_historico + índice composto
+#                    { cliente_id: 1, data: -1 } (só grava na 1ª vez)      [CP3]
+#  3. seed:elastic → recria o índice 'produtos' a partir de init/elastic-init.json
+#                    e o popula com o MongoDB, já com a localização da loja [CP2]
+echo -e "${CYAN}Carregando coordenadas, carga de teste e índice de busca (pode levar ~1 min na 1ª vez)...${NC}"
+CARGA_OK=0
 for i in {1..40}; do
     if curl -s -f http://localhost:9234 >/dev/null 2>&1 \
+        && docker exec nosql_app npm run seed:geo >/dev/null 2>&1 \
+        && docker exec nosql_app npm run seed:carga >/dev/null 2>&1 \
         && docker exec nosql_app npm run seed:elastic >/dev/null 2>&1; then
-        INDICE_OK=1
+        CARGA_OK=1
         break
     fi
     sleep 3
 done
 
-if [[ "$INDICE_OK" == "1" ]]; then
-    echo -e "${GREEN}Índice 'produtos' criado e carregado com sucesso.${NC}"
+if [[ "$CARGA_OK" == "1" ]]; then
+    echo -e "${GREEN}Coordenadas e índice 2dsphere, 200 mil pedidos com índice composto e índice 'produtos' prontos.${NC}"
 else
-    echo -e "${YELLOW}[AVISO] O índice 'produtos' não pôde ser criado automaticamente.${NC}"
-    echo -e "${YELLOW}        Rode manualmente: docker exec nosql_app npm run seed:elastic${NC}"
+    echo -e "${YELLOW}[AVISO] A carga não pôde ser concluída automaticamente. Com o ambiente no ar, rode:${NC}"
+    echo -e "${YELLOW}        docker exec nosql_app npm run seed:geo && docker exec nosql_app npm run seed:carga && docker exec nosql_app npm run seed:elastic${NC}"
 fi
 
 echo ""
@@ -89,6 +95,8 @@ echo -e "║  • Health Check dos 3 bancos:      ${CYAN}http://localhost:3400/a
 echo -e "║  • Busca (ElasticSearch):          ${CYAN}http://localhost:3400/api/produtos?q=notebook${NC} ║"
 echo -e "║  • Produtos recentes (cache):      ${CYAN}http://localhost:3400/api/produtos/recentes${NC} ║"
 echo -e "║  • Ranking (Redis Sorted Set):     ${CYAN}http://localhost:3400/api/redis/ranking/top${NC} ║"
+echo -e "║  • Lojas perto (2dsphere):         ${CYAN}http://localhost:3400/api/perto/lojas?raio_km=3${NC} ║"
+echo -e "║  • Entregadores perto (GEOSEARCH): ${CYAN}http://localhost:3400/api/perto/entregadores${NC} ║"
 echo -e "${GREEN}╠══════════════════════════════════════════════════════════════════╣${NC}"
 echo -e "║  ${BOLD}INTERFACES VISUAIS (WEB):${NC}                                      ║"
 echo -e "║  • ElasticVue (Elasticsearch):     ${CYAN}http://localhost:8400${NC} (Use http://localhost:9234) ║"
